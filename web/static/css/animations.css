@@ -1,0 +1,48 @@
+/* ── Keyframes ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* ── Animation Classes ── */
+.fade-in-up {
+  animation: fadeInUp var(--transition-bounce) both;
+}
+.fade-in-up-d1 { animation-delay: 0.05s; }
+.fade-in-up-d2 { animation-delay: 0.1s; }
+.fade-in-up-d3 { animation-delay: 0.15s; }
+.fade-in-up-d4 { animation-delay: 0.2s; }
+.fade-in-up-d5 { animation-delay: 0.25s; }
+
+/* ── HTMX Transitions ── */
+.htmx-swapping {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.htmx-settling {
+  animation: fadeInUp var(--transition-bounce) both;
+}
+
+.htmx-request .card-glass,
+.card-glass.htmx-request,
+.htmx-request .bento-item,
+.bento-item.htmx-request {
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.4), var(--box-shadow-glass);
+  animation: breathe 2s ease-in-out infinite;
+}

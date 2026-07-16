@@ -1,0 +1,13 @@
+/* ═══════════════════════════════════════════════════════
+   LoxTu Go — «Abyssal Aurora» Design System
+   Master import file
+   ═══════════════════════════════════════════════════════ */
+
+@import 'tokens.css';
+@import 'reset.css';
+@import 'base.css';
+@import 'aurora.css';
+@import 'components.css';
+@import 'animations.css';
+@import 'dashboard.css';
+@import 'detail-panel.css';

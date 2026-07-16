@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────
+# LoxTu Go — Docker Compose
+# ─────────────────────────────────────────
+
+name: loxtu-go
+
+services:
+  surrealdb:
+    build:
+      context: .
+      dockerfile: Dockerfile.surrealdb
+    container_name: surrealdb
+    restart: unless-stopped
+    platform: linux/amd64
+    env_file:
+      - .env
+    environment:
+      - SURREALDB_USER=${SURREALDB_USER:-root}
+      - SURREALDB_PASS=${SURREALDB_PASS:-root}
+    volumes:
+      - surrealdb-data:/data
+    networks:
+      - loxtu-net
+      - loxtu-mail
+    healthcheck:
+      test: ["CMD", "curl", "-sfL", "http://localhost:8881"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  loxtu-go:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: loxtu-go
+    restart: unless-stopped
+    platform: linux/amd64
+    env_file:
+      - .env
+    environment:
+      - LOXTU_PORT=${LOXTU_PORT:-8880}
+      - LOXTU_HOST=${LOXTU_HOST:-0.0.0.0}
+      - SURREALDB_ENDPOINT=${SURREALDB_ENDPOINT:-http://surrealdb:8881/rpc}
+      - SURREALDB_USER=${SURREALDB_USER:-root}
+      - SURREALDB_PASS=${SURREALDB_PASS:-root}
+      - SURREALDB_NS=${SURREALDB_NS:-loxtu}
+      - SURREALDB_DB=${SURREALDB_DB:-loxtu}
+      - LOXTU_JWT_SECRET=${LOXTU_JWT_SECRET:-}
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    networks:
+      - loxtu-net
+      - loxtu-mail
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8880/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  loxtu-net:
+    name: loxtu-net
+    external: true
+  loxtu-mail:
+    name: loxtu-mail
+    external: true
+
+volumes:
+  surrealdb-data:

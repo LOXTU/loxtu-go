@@ -1,0 +1,152 @@
+/* ── Dashboard Specific ── */
+
+.dashboard-stats-value {
+  font-size: var(--font-size-4xl);
+  font-weight: 700;
+  color: var(--color-emerald-ice);
+  line-height: 1;
+  font-variation-settings: 'wght' 700;
+  transition: all var(--transition-bounce);
+}
+
+.dashboard-stats-label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  margin-top: 6px;
+}
+
+.dashboard-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 300;
+  font-variation-settings: 'wght' 300;
+  color: var(--color-text-primary);
+}
+
+.dashboard-subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* ── Bento Item ── */
+.bento-item {
+  background: linear-gradient(160deg, var(--color-glass-bg), rgba(4, 11, 20, 0.7));
+  backdrop-filter: var(--backdrop-blur-primary);
+  -webkit-backdrop-filter: var(--backdrop-blur-primary);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: var(--box-shadow-glass-sm);
+  border-radius: var(--border-radius-card);
+  padding: 2rem;
+  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth),
+              border-color var(--transition-smooth);
+  container-type: inline-size;
+  min-height: 200px;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.bento-item:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--box-shadow-glass-glow);
+  border-color: var(--color-glass-border-hover);
+}
+
+@container (max-width: 280px) {
+  .bento-item { padding: 1.25rem; }
+  .bento-item .bento-secondary { display: none; }
+  .bento-item .bento-title { font-size: var(--font-size-sm); }
+}
+
+/* ── Bento Grid ── */
+.bento-grid {
+  display: grid;
+  gap: var(--space-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-lg);
+}
+
+@media (min-width: 1024px) {
+  .bento-grid {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-areas:
+      "stats1 stats2 stats3"
+      "fact  fact  actions"
+      "stats4 stats5 .";
+  }
+  .bento-card-stats-1  { grid-area: stats1; }
+  .bento-card-stats-2  { grid-area: stats2; }
+  .bento-card-stats-3  { grid-area: stats3; }
+  .bento-card-fact     { grid-area: fact;   grid-column: span 2; }
+  .bento-card-actions  { grid-area: actions; }
+  .bento-card-stats-4  { grid-area: stats4; }
+  .bento-card-stats-5  { grid-area: stats5; }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .bento-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 639px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+    padding: var(--space-md);
+  }
+  .bento-item { max-width: 500px; margin: 0 auto; width: 100%; }
+}
+
+/* ── Theme Toggle Button ── */
+.theme-toggle-btn {
+  width: 44px;
+  height: 44px;
+  background-color: var(--color-glass-bg);
+  backdrop-filter: var(--backdrop-blur-light);
+  -webkit-backdrop-filter: var(--backdrop-blur-light);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-text-primary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: transform var(--transition-bounce),
+              background-color var(--transition-smooth),
+              border-color var(--transition-smooth),
+              box-shadow var(--transition-smooth);
+}
+
+.theme-toggle-btn:hover {
+  transform: scale(1.05);
+  border-color: var(--color-emerald-ice);
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.2);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+/* ── Toast / Alert ── */
+.toast {
+  position: fixed;
+  top: var(--space-lg);
+  right: var(--space-lg);
+  z-index: 1000;
+  min-width: 320px;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--color-glass-bg-heavy);
+  backdrop-filter: var(--backdrop-blur-heavy);
+  -webkit-backdrop-filter: var(--backdrop-blur-heavy);
+  border-radius: var(--border-radius-glass);
+  box-shadow: var(--box-shadow-glass-lg);
+  border: 1px solid var(--color-glass-border);
+  animation: fadeInUp var(--transition-bounce) both;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.toast-success { border-color: rgba(45, 212, 191, 0.3); }
+.toast-error { border-color: rgba(239, 68, 68, 0.3); }

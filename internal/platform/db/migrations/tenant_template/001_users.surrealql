@@ -1,0 +1,32 @@
+-- ==================================================================
+-- tenant_template/001_users.surrealql
+-- Users table — employees within a tenant namespace.
+-- Progressive Profiling: created with minimal fields on OTP Send,
+-- enriched with full data on Passkey Finish.
+-- All optional fields use option<TYPE> so a minimal record works.
+-- ==================================================================
+
+DEFINE TABLE users SCHEMAFULL;
+
+-- Identity (strict — required at creation)
+DEFINE FIELD email_hash       ON users TYPE string;
+DEFINE FIELD tenant_id        ON users TYPE string;
+DEFINE FIELD is_active        ON users TYPE bool;
+
+-- Progressive Profiling — optional, filled on Passkey Finish
+DEFINE FIELD email            ON users TYPE option<string>;
+DEFINE FIELD name             ON users TYPE option<string>;
+DEFINE FIELD surname          ON users TYPE option<string>;
+DEFINE FIELD role             ON users TYPE option<string>;
+DEFINE FIELD department       ON users TYPE option<string>;
+DEFINE FIELD section          ON users TYPE option<string>;
+DEFINE FIELD base             ON users TYPE option<string>;
+DEFINE FIELD skills           ON users TYPE option<array<string>>;
+DEFINE FIELD vapid_endpoint   ON users TYPE option<string>;
+DEFINE FIELD pin_hash         ON users TYPE option<string>;
+DEFINE FIELD oauth_provider   ON users TYPE option<string>;
+DEFINE FIELD oauth_sub        ON users TYPE option<string>;
+
+-- Indexes
+DEFINE INDEX idx_users_email_hash ON users FIELDS email_hash UNIQUE;
+DEFINE INDEX idx_users_email      ON users FIELDS email UNIQUE;

@@ -1,0 +1,45 @@
+<svg xmlns="http://w3.org" viewBox="0 0 100 100" width="100%" height="100%">
+  <defs>
+    <filter id="aurora-infinite-blur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" />
+    </filter>
+    <linearGradient id="emerald-to-ai" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#022D1E" />
+      <stop offset="50%" stop-color="#00A86B" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+    <linearGradient id="ai-to-gold" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#017890" />
+      <stop offset="30%" stop-color="#06B6D4" />
+      <stop offset="70%" stop-color="#FFF1C5" />
+      <stop offset="100%" stop-color="#D4AF37" />
+    </linearGradient>
+    <linearGradient id="premium-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#AA771C" />
+      <stop offset="50%" stop-color="#FFF1C5" />
+      <stop offset="100%" stop-color="#8A5A00" />
+    </linearGradient>
+    <linearGradient id="purple-to-ai" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4C1D95" />
+      <stop offset="50%" stop-color="#D946EF" />
+      <stop offset="100%" stop-color="#00E5FF" />
+    </linearGradient>
+  </defs>
+  <g filter="url(#aurora-infinite-blur)" style="mix-blend-mode: screen;">
+    <ellipse cx="50" cy="50" rx="34" ry="20" fill="url(#premium-gold)" opacity="0.8">
+      <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="14s" repeatCount="indefinite" />
+    </ellipse>
+    <ellipse cx="46" cy="46" rx="28" ry="18" fill="url(#emerald-to-ai)" opacity="0.9">
+      <animateTransform attributeName="transform" type="rotate" from="360 46 46" to="0 46 46" dur="9s" repeatCount="indefinite" />
+    </ellipse>
+    <ellipse cx="52" cy="42" rx="22" ry="16" fill="url(#purple-to-ai)" opacity="0.75">
+      <animateTransform attributeName="transform" type="rotate" from="0 52 42" to="360 52 42" dur="12s" repeatCount="indefinite" />
+    </ellipse>
+    <ellipse cx="55" cy="48" rx="20" ry="14" fill="#00E5FF" opacity="0.4">
+      <animateTransform attributeName="transform" type="rotate" from="360 55 48" to="0 55 48" dur="11s" repeatCount="indefinite" />
+    </ellipse>
+    <ellipse cx="48" cy="54" rx="25" ry="15" fill="url(#ai-to-gold)" opacity="0.85">
+      <animateTransform attributeName="transform" type="rotate" from="0 48 54" to="360 48 54" dur="7s" repeatCount="indefinite" />
+    </ellipse>
+  </g>
+</svg>

@@ -1,0 +1,75 @@
+/* ── Abyssal Aurora Background Layers ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 70% 45% at 25% 35%, rgba(45, 212, 191, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 55% at 75% 65%, rgba(13, 148, 136, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 35% at 50% 15%, rgba(244, 183, 64, 0.06) 0%, transparent 40%),
+    radial-gradient(ellipse 60% 50% at 10% 80%, rgba(45, 212, 191, 0.08) 0%, transparent 45%);
+  animation: auroraShift 20s ease-in-out infinite;
+  pointer-events: none;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 40% 35% at 80% 20%, rgba(45, 212, 191, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse 30% 40% at 15% 60%, rgba(13, 148, 136, 0.08) 0%, transparent 40%);
+  animation: auroraShift 28s ease-in-out infinite reverse;
+  pointer-events: none;
+}
+
+@keyframes auroraShift {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(2%, -1.5%) scale(1.03); }
+  50%  { transform: translate(-1.5%, 1%) scale(0.98); }
+  75%  { transform: translate(1.5%, 2%) scale(1.02); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* ── Light theme: brushed metal body background ── */
+[data-theme="light"] body {
+  background: linear-gradient(180deg, #ECEEF2 0%, #E2E6EC 50%, #ECEEF2 100%);
+  background-attachment: fixed;
+}
+
+/* ── Aurora-attract glow ── */
+.aurora-attract {
+  box-shadow:
+    0 0 60px rgba(45, 212, 191, 0.35),
+    0 0 120px rgba(45, 212, 191, 0.15),
+    var(--box-shadow-glass);
+  transition: box-shadow 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="light"] .aurora-attract {
+  box-shadow:
+    0 0 60px rgba(45, 212, 191, 0.2),
+    0 0 120px rgba(45, 212, 191, 0.08),
+    var(--box-shadow-glass);
+}
+
+/* ── Aurora Clouds ── */
+#aurora-background {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.aurora-cloud {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  -webkit-filter: blur(80px);
+  opacity: 0.35;
+  pointer-events: none;
+}

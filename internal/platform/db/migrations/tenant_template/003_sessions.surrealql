@@ -1,0 +1,13 @@
+-- ==================================================================
+-- tenant_template/003_sessions.surrealql
+-- JWT refresh token sessions.
+-- actor_id is a required record<users> reference.
+-- ==================================================================
+
+DEFINE TABLE sessions SCHEMAFULL;
+DEFINE FIELD actor_id   ON sessions TYPE record<users>;
+DEFINE FIELD token_hash ON sessions TYPE string;
+DEFINE FIELD created_at ON sessions TYPE datetime;
+DEFINE FIELD expires_at ON sessions TYPE datetime;
+
+DEFINE INDEX idx_sessions_token ON sessions FIELDS token_hash;

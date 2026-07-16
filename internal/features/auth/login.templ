@@ -1,0 +1,151 @@
+package auth
+
+import (
+	"fmt"
+	sharedtemplates "github.com/loxtu/loxtu-go/internal/features/shared/templates"
+)
+
+// LoginShell — полная HTML-страница
+templ LoginShell() {
+	@sharedtemplates.Base("LOXTU — Sign in", loginPage())
+}
+
+// loginPage — центрированная карточка (хедер в Base)
+templ loginPage() {
+	<div class="login-body">
+		@LoginFormPartial()
+	</div>
+}
+
+// ─────────────────────────────────────────────────
+// LoginFormPartial — форма email
+// ─────────────────────────────────────────────────
+
+templ LoginFormPartial() {
+	<script src="/static/js/passkey.js" defer></script>
+	<div id="auth-container" class="card-glass card-auth fade-in-up" style="width:100%;">
+		<div style="margin-bottom:24px;">
+			<h1 style="font-size:1.5rem; margin-bottom:6px; font-family:var(--font-heading); font-weight:300;">Authorisation required</h1>
+			<p class="text-secondary" style="font-size:var(--font-size-sm);">
+				Enter your email to receive a verification code
+			</p>
+		</div>
+		<form
+			hx-post="/auth/otp/send"
+			hx-target="#auth-container"
+			hx-swap="outerHTML"
+			class="flex-col gap-md"
+			style="display:flex; flex:1;"
+		>
+			<div style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:16px;">
+				<input
+					type="email"
+					name="email"
+					class="input-glass input-auth"
+					placeholder="you@airline.com"
+					required
+					autocomplete="username webauthn"
+					autofocus
+				/>
+				<div style="display:flex; gap:8px; align-items:stretch;">
+					<button type="submit" class="btn btn-primary btn-auth" style="flex:1;">
+						Send verification code
+					</button>
+					<button
+						type="button"
+						class="btn-passkey-icon js-signin-passkey"
+						id="passkey-signin-btn"
+						title="Sign in with passkey"
+						style="display:none;"
+					>
+						<img src="/static/icons/passkey.svg" alt="Passkey" width="24" height="24" />
+					</button>
+				</div>
+			</div>
+		</form>
+	</div>
+}
+
+// ─────────────────────────────────────────────────
+// OTPFormPartial — первый экран OTP
+// ─────────────────────────────────────────────────
+
+templ OTPFormPartial(email string) {
+	<div id="auth-container" class="card-glass card-auth fade-in-up" style="width:100%;">
+		@OTPHeader(email)
+		@OTPBody(email, "")
+	</div>
+}
+
+// ─────────────────────────────────────────────────
+// OTPErrorPartial — экран с ошибкой + resend
+// ─────────────────────────────────────────────────
+
+templ OTPErrorPartial(email string, message string) {
+	<div id="auth-container" class="card-glass card-auth fade-in-up" style="width:100%;">
+		@OTPErrorHeader(message)
+		@OTPBody(email, "otp-box-error")
+	</div>
+}
+
+// ── OTPHeader — заголовок для первого экрана ──
+templ OTPHeader(email string) {
+	<div style="margin-bottom:24px;">
+		<h1 style="font-size:1.5rem; margin-bottom:6px; font-family:var(--font-heading); font-weight:300;">Check your email</h1>
+		<p class="text-secondary" style="font-size:var(--font-size-sm);">
+			We sent a code to <strong style="color:var(--color-text-primary);">{ email }</strong>
+		</p>
+	</div>
+}
+
+// ── OTPErrorHeader — заголовок с ошибкой ──
+templ OTPErrorHeader(message string) {
+	<div style="margin-bottom:24px;">
+		<p class="text-error" style="font-size:var(--font-size-sm); margin-bottom:12px;" role="alert">{ message }</p>
+	</div>
+}
+
+// ── OTPBody — форма с 6 боксами ──
+templ OTPBody(email string, boxClass string) {
+	<form
+		id="otp-form"
+		hx-post="/auth/otp/verify"
+		hx-target="#auth-container"
+		hx-swap="outerHTML"
+		class="flex-col gap-md"
+		style="display:flex; flex:1;"
+	>
+		<input type="hidden" name="email" value={ email } />
+		<div class="flex-col gap-md" style="display:flex; flex:1; justify-content:center;">
+			<div class="otp-boxes" role="group" aria-label="One-time code">
+				for i := 0; i < 6; i++ {
+					<input
+						type="text"
+						name="code"
+						class={ templ.KV("otp-box", true), templ.KV(boxClass, boxClass != "") }
+						inputmode="numeric"
+						pattern="[0-9]"
+						maxlength="1"
+						autocomplete="one-time-code"
+						required
+						autofocus={ i == 0 }
+						data-index={ fmt.Sprintf("%d", i) }
+					/>
+				}
+			</div>
+		</div>
+		<button type="submit" class="btn btn-primary w-full" style="display:none;">Verify</button>
+		<button
+			type="button"
+			class="btn btn-secondary w-full"
+			hx-post="/auth/otp/send"
+			hx-target="#auth-container"
+			hx-swap="outerHTML"
+			hx-vals={ fmt.Sprintf(`{"email":"%s"}`, email) }
+		>
+			Resend code
+		</button>
+	</form>
+}
+
+// ── ResendButton — удалена, кнопка всегда в OTPBody ──

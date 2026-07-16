@@ -1,0 +1,26 @@
+-- ==================================================================
+-- tenant_template/002_passkey.surrealql
+-- WebAuthn passkey tables — users, credentials.
+-- actor_id is a required record<users> reference (NOT optional).
+-- ==================================================================
+
+-- ── Passkey Users ──────────────────────────────────────────────────────────
+
+DEFINE TABLE passkey_users SCHEMAFULL;
+DEFINE FIELD actor_id  ON passkey_users TYPE record<users>;
+DEFINE FIELD handle    ON passkey_users TYPE bytes;
+DEFINE FIELD email     ON passkey_users TYPE option<string>;
+
+-- ── Passkey Credentials ─────────────────────────────────────────────────────
+
+DEFINE TABLE passkey_credentials SCHEMAFULL;
+DEFINE FIELD actor_id        ON passkey_credentials TYPE record<users>;
+DEFINE FIELD kid             ON passkey_credentials TYPE bytes;
+DEFINE FIELD public_key      ON passkey_credentials TYPE bytes;
+DEFINE FIELD transports      ON passkey_credentials TYPE option<array<string>>;
+DEFINE FIELD sign_count      ON passkey_credentials TYPE int DEFAULT 0;
+DEFINE FIELD aaguid          ON passkey_credentials TYPE option<string>;
+DEFINE FIELD backup_eligible ON passkey_credentials TYPE option<bool>;
+DEFINE FIELD backup_state    ON passkey_credentials TYPE option<bool>;
+
+DEFINE INDEX idx_pk_kid ON passkey_credentials FIELDS kid UNIQUE;

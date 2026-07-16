@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────
+# Custom SurrealDB 3.2.0 for linux/amd64 VPS
+# Minimal image — single binary + entrypoint
+# ─────────────────────────────────────────
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Download SurrealDB v3.2.0 for linux/amd64
+RUN curl -fsSL https://install.surrealdb.com \
+    | sh -s -- --version v3.2.0
+
+# ─────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates tzdata curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/surreal /usr/local/bin/surreal
+
+EXPOSE 8881
+
+VOLUME ["/data"]
+
+ENTRYPOINT ["sh", "-c", "surreal start --bind 0.0.0.0:${SURREALDB_PORT:-8881} --user ${SURREALDB_USER:-root} --pass ${SURREALDB_PASS:-root} ${SURREALDB_STORAGE:-surrealkv:///data/surrealdb}"]

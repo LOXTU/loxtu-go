@@ -1,0 +1,26 @@
+-- ==================================================================
+-- control_plane/001_tenant.surrealql
+-- Tenant registry — one record per tenant (namespace).
+-- Run ONCE per control_plane NS/DB, NOT per tenant namespace.
+-- ==================================================================
+
+DEFINE TABLE tenant SCHEMAFULL;
+DEFINE FIELD code             ON tenant TYPE string;
+DEFINE FIELD name             ON tenant TYPE string;
+DEFINE FIELD type             ON tenant TYPE string;
+DEFINE FIELD domain_whitelist ON tenant TYPE array<string>;
+DEFINE FIELD settings         ON tenant TYPE option<object>;
+DEFINE FIELD quotas           ON tenant TYPE option<object>;
+DEFINE FIELD created_at       ON tenant TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX idx_tenant_code ON tenant FIELDS code UNIQUE;
+
+-- Seed: default tenant
+CREATE tenant:loxtu CONTENT {
+    code: "loxtu",
+    name: "LOXTU Default",
+    type: "airport",
+    domain_whitelist: ["loxtu.com"],
+    settings: {},
+    quotas: {}
+};
