@@ -157,17 +157,32 @@
         conditionalAbortController.abort();
         conditionalAbortController = null;
       }
-      signInWithPasskey();
+      // Read email from the input field if available.
+      var emailInput = document.querySelector('input[name="email"]');
+      var email = emailInput ? emailInput.value.trim() : '';
+      signInWithPasskey(email);
     }
   });
 
-  async function signInWithPasskey() {
+  async function signInWithPasskey(email) {
     console.log('[passkey] Explicit sign-in requested');
     try {
-      var resp = await fetch('/auth/passkey/login/begin');
+      var url = '/auth/passkey/login/begin';
+      if (email) url += '?email=' + encodeURIComponent(email);
+      var resp = await fetch(url);
       if (!resp.ok) { console.error('[passkey] Failed to get login options'); return; }
       var options = await resp.json();
+      if (!options || !options.publicKey) {
+        console.warn('[passkey] No passkey credentials available for this account.');
+        alert('No passkey found on this device. Please sign in with OTP instead.');
+        return;
+      }
       options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
+      if (options.publicKey.allowCredentials) {
+        options.publicKey.allowCredentials.forEach(function (cred) {
+          cred.id = base64urlToArrayBuffer(cred.id);
+        });
+      }
       var assertion = await navigator.credentials.get({ publicKey: options.publicKey });
       var encoded = encodeAssertion(assertion);
       var finishResp = await fetch('/auth/passkey/login/finish', {
