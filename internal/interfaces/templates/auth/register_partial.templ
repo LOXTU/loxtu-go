@@ -1,0 +1,35 @@
+package auth
+
+import (
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+)
+
+// RegisterPartial — passkey setup card for HTMX swap into #auth-container.
+templ RegisterPartial(email string) {
+	<script src="/static/js/passkey.js" defer></script>
+	@components.CardAuth() {
+		<div class="ds-auth-header">
+			@components.Heading1("Set up passkey")
+			@components.Text("secondary", "Use Face ID, Touch ID, or your device PIN for faster sign-in next time.")
+		</div>
+		<form class="ds-auth-form">
+			<input type="hidden" name="email" value={ email }/>
+			<div class="ds-auth-form-body">
+				<button type="button" class="btn btn-primary btn-auth js-register-passkey" data-email={ email }>
+					Register passkey
+				</button>
+				<button
+					type="button"
+					class="btn btn-secondary js-skip-passkey"
+					data-email={ email }
+					hx-post="/auth/passkey/skip"
+					hx-target="#auth-container"
+					hx-swap="outerHTML"
+					hx-vals={ `{"email":"` + email + `"}` }
+				>
+					Skip for now
+				</button>
+			</div>
+		</form>
+	}
+}

@@ -207,7 +207,8 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		if err := h.issueCookies(w, r, email, tenantNS, actorID, "auth.otp.verify"); err != nil {
 			log.Printf("ERROR IssueTokens: %v", err)
 		} else {
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+			w.Header().Set("HX-Redirect", "/dashboard")
+			w.WriteHeader(http.StatusOK)
 		}
 		return
 	}
@@ -221,7 +222,8 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		Action: "auth.otp.verify", Status: "success",
 		ClientIP: mw.GetClientIP(r), ReqID: mw.GetRequestID(r.Context()),
 	})
-	http.Redirect(w, r, "/auth/consent?email="+url.QueryEscape(email), http.StatusSeeOther)
+	// Swap consent partial into #auth-container (SPA-like).
+	templ.Handler(authtmpl.ConsentPartial(email)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) ConsentPage(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +237,8 @@ func (h *AuthHandler) ConsentPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	templ.Handler(authtmpl.ConsentPage(email)).ServeHTTP(w, r)
+	// HTMX partial swap into #auth-container (SPA-like).
+	templ.Handler(authtmpl.ConsentPartial(email)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
@@ -276,11 +279,13 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 
 	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantNS, email) {
 		_ = h.issueCookies(w, r, email, tenantNS, u.ActorID, "auth.consent.accept")
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		// Already has passkey → swap to redirect signal (HX-Redirect handles SPA navigation to dashboard).
+		w.Header().Set("HX-Redirect", "/dashboard")
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	w.Header().Set("HX-Redirect", "/auth/passkey/register?email="+url.QueryEscape(email))
-	w.WriteHeader(http.StatusOK)
+	// No passkey → swap passkey register partial into #auth-container.
+	templ.Handler(authtmpl.RegisterPartial(email)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {

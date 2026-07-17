@@ -138,13 +138,14 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	} else {
 		setAuthCookies(w, pair)
 		http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: email, Path: "/", MaxAge: 3600})
+		http.SetCookie(w, &http.Cookie{
+			Name: "loxtu_tenant", Value: tenantNS,
+			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		})
 	}
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/dashboard")
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	// HTMX: redirect to dashboard via HX-Redirect header (SPA navigation).
+	w.Header().Set("HX-Redirect", "/dashboard")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
