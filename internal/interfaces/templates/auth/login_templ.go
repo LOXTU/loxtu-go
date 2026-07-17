@@ -66,7 +66,7 @@ func loginPage() templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"login-body\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"site-header\"><div class=\"loxtu-logo\">LOXTU</div><button class=\"theme-toggle-btn\" id=\"theme-toggle-header\" title=\"Toggle theme\" aria-label=\"Toggle theme\"><img src=\"/static/icons/moon.svg\" alt=\"\" width=\"20\" height=\"20\"></button></header><div class=\"login-body\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -336,7 +336,7 @@ func OTPHeader(email string) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 76, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 82, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -415,7 +415,7 @@ func OTPBody(email string, boxClass string) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 95, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 101, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -461,7 +461,7 @@ func OTPBody(email string, boxClass string) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", i))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 109, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 115, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 			if templ_7745c5c3_Err != nil {
@@ -505,7 +505,7 @@ func OTPBody(email string, boxClass string) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf(`{"email":"%s"}`, email))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 123, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 129, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {

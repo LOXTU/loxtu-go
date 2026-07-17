@@ -96,8 +96,7 @@ func main() {
 	r.Use(imw.SecurityHeaders)
 
 	// Static (embedded)
-	fileServer := http.FileServer(http.FS(web.StaticFiles))
-	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
+	r.Handle("/static/*", http.FileServer(http.FS(web.StaticFiles)))
 	r.Get("/favicon.ico", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		data, err := web.StaticFiles.ReadFile("static/icons/favicon.svg")
 		if err != nil {

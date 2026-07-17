@@ -151,7 +151,9 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
 	tenantNS := mw.GetTenantCode(r.Context())
 	if email == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
+		// Conditional mediation: browser requests discoverable credentials without email.
+		// Return 200 with empty JSON body — no error, no options, JS continues gracefully.
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "no-email"})
 		return
 	}
 	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantNS)

@@ -65,7 +65,7 @@ func dashboardBody(email string, jsonLD string) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script type=\"application/ld+json\">{ jsonLD }</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"site-header\"><div class=\"loxtu-logo\">LOXTU</div><button class=\"theme-toggle-btn\" id=\"theme-toggle-header\" title=\"Toggle theme\" aria-label=\"Toggle theme\"><img src=\"/static/icons/moon.svg\" alt=\"\" width=\"20\" height=\"20\"></button></header><script type=\"application/ld+json\">{ jsonLD }</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -143,7 +143,7 @@ func DashboardHeader(email string) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/dashboard/shell.templ`, Line: 36, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/dashboard/shell.templ`, Line: 42, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -274,7 +274,7 @@ func DetailPanelContent(title string, value string, label string, detail string)
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/dashboard/shell.templ`, Line: 61, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/dashboard/shell.templ`, Line: 67, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {

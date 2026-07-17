@@ -77,6 +77,12 @@ func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
 		}
 	}
 
+	// Priority 2.5: loxtu_tenant cookie (conveyor belt — set by OTP send / consent)
+	if c, err := r.Cookie("loxtu_tenant"); err == nil && c.Value != "" {
+		log.Printf("[tenant] Priority 2.5 (cookie): NS=%s", c.Value)
+		return c.Value
+	}
+
 	// Priority 3: form email domain (OTP send) — extract domain string only; never store identity for full resolution
 	if email := r.FormValue("email"); email != "" {
 		if domain := domainFromEmail(email); domain != "" {

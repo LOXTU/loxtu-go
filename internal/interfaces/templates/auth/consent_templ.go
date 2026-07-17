@@ -64,7 +64,7 @@ func consentBody(email string) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"ds-consent-page\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"site-header\"><div class=\"loxtu-logo\">LOXTU</div><button class=\"theme-toggle-btn\" id=\"theme-toggle-header\" title=\"Toggle theme\" aria-label=\"Toggle theme\"><img src=\"/static/icons/moon.svg\" alt=\"\" width=\"20\" height=\"20\"></button></header><div class=\"ds-consent-page\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -107,7 +107,7 @@ func consentBody(email string) templ.Component {
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/consent.templ`, Line: 19, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/consent.templ`, Line: 25, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -144,7 +144,7 @@ func consentBody(email string) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(email)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/consent.templ`, Line: 31, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/consent.templ`, Line: 37, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {

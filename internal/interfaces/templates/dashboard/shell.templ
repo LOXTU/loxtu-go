@@ -12,6 +12,12 @@ templ DashboardShell(email string, jsonLD string) {
 }
 
 templ dashboardBody(email string, jsonLD string) {
+	<header class="site-header">
+		<div class="loxtu-logo">LOXTU</div>
+		<button class="theme-toggle-btn" id="theme-toggle-header" title="Toggle theme" aria-label="Toggle theme">
+			<img src="/static/icons/moon.svg" alt="" width="20" height="20" />
+		</button>
+	</header>
 	<script type="application/ld+json">{ jsonLD }</script>
 	@components.Container("full") {
 		@DashboardHeader(email)
