@@ -157,13 +157,20 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
 	tenantNS := mw.GetTenantCode(r.Context())
 	if email == "" {
-		// Conditional mediation: browser requests discoverable credentials without email.
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "no-email"})
+		// Discoverable credentials: no email → return challenge without allowCredentials.
+		// Browser will show all available passkeys for this RP.
+		options, challenge, err := h.passkey.BeginLoginDiscoverable(r.Context(), tenantNS)
+		if err != nil {
+			identity.Logf("BeginLogin discoverable: no credentials: %v", err)
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "no-credentials"})
+			return
+		}
+		_ = challenge
+		httputil.WriteJSON(w, http.StatusOK, options)
 		return
 	}
 	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantNS)
 	if err != nil {
-		// No passkey credentials in DB for this email — not an error, just no credentials.
 		identity.Logf("BeginLogin: no credentials for %s: %v", httputil.MaskEmail(email), err)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "no-credentials"})
 		return

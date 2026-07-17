@@ -208,6 +208,36 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 	return cred, user, nil
 }
 
+// BeginLoginDiscoverable starts a login ceremony without specifying a user.
+// Used for conditional mediation / discoverable credentials (email-less login).
+// Browser shows all available passkeys for this RP.
+func (s *PasskeyService) BeginLoginDiscoverable(ctx context.Context, tenantNS string) (*protocol.CredentialAssertion, string, error) {
+	if s.wa == nil {
+		return nil, "", fmt.Errorf("webauthn not initialised")
+	}
+	// Dummy user with no credentials — wa.BeginLogin will generate options
+	// without allowCredentials, letting the browser choose.
+	dummy := &PasskeyUser{
+		TenantNS: tenantNS,
+		Handle:   []byte("discoverable"),
+	}
+	options, session, err := s.wa.BeginLogin(dummy)
+	if err != nil {
+		return nil, "", fmt.Errorf("begin discoverable login: %w", err)
+	}
+	// Remove allowCredentials — let browser show all available passkeys.
+	options.Response.AllowedCredentials = nil
+	challenge := session.Challenge
+	s.storeSession(challenge, &CeremonySession{
+		Challenge: challenge,
+		UserID:    string(dummy.Handle),
+		UserEmail: "", // resolved from assertion.userHandle in FinishLogin
+		TenantNS:  tenantNS,
+		WASession: session,
+	})
+	return options, challenge, nil
+}
+
 // BeginLogin starts an assertion ceremony.
 func (s *PasskeyService) BeginLogin(ctx context.Context, email, tenantNS string) (*protocol.CredentialAssertion, string, error) {
 	if s.wa == nil {
