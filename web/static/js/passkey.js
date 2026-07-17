@@ -78,6 +78,12 @@
       var options = await resp.json();
       console.log('[passkey] Received login options, mediation:', options.mediation);
 
+      // Guard: backend returns {status:'no-email'} when no email was sent.
+      if (!options || !options.publicKey) {
+        console.log('[passkey] Conditional mediation: no credentials found, exiting gracefully.');
+        return;
+      }
+
       // Convert challenge and allowCredentials from base64url
       options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
       if (options.publicKey.allowCredentials) {
@@ -117,12 +123,8 @@
       }
 
       console.log('[passkey] Login successful, redirecting...');
-      var redirectUrl = finishResp.headers.get('HX-Redirect');
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
-      } else {
-        window.location.href = '/dashboard';
-      }
+      var data = await finishResp.json();
+      window.location.href = data.redirect || '/dashboard';
 
     } catch (err) {
       // Ignore abort errors from explicit sign-in
@@ -177,8 +179,8 @@
         console.error('[passkey] Sign-in failed:', err);
         return;
       }
-      var redirectUrl = finishResp.headers.get('HX-Redirect');
-      window.location.href = redirectUrl || '/dashboard';
+      var data = await finishResp.json();
+      window.location.href = data.redirect || '/dashboard';
     } catch (err) {
       console.error('[passkey] Sign-in error:', err);
     }
@@ -241,10 +243,10 @@
 
       console.log('[passkey] Registration complete, redirecting...');
 
-      // HTMX redirect via HX-Redirect header
-      var redirectUrl = finishResp.headers.get('HX-Redirect');
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
+      // Read redirect from JSON body (Go handler returns {status, redirect}).
+      var data = await finishResp.json();
+      if (data.redirect) {
+        window.location.href = data.redirect;
       }
 
     } catch (err) {
@@ -273,12 +275,8 @@
       return;
     }
 
-    var redirectUrl = resp.headers.get('HX-Redirect');
-    if (redirectUrl) {
-      window.location.href = redirectUrl;
-    } else {
-      window.location.href = '/dashboard';
-    }
+    var data = await resp.json();
+    window.location.href = data.redirect || '/dashboard';
   }
 
   // ── Helpers ──
