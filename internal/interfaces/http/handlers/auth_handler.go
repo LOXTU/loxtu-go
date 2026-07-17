@@ -278,13 +278,13 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantNS, email) {
+		log.Printf("[auth] Passkey presence check result: true for %s", masked)
 		_ = h.issueCookies(w, r, email, tenantNS, u.ActorID, "auth.consent.accept")
-		// Already has passkey → swap to redirect signal (HX-Redirect handles SPA navigation to dashboard).
 		w.Header().Set("HX-Redirect", "/dashboard")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// No passkey → swap passkey register partial into #auth-container.
+	log.Printf("[auth] Passkey presence check result: false for %s → showing register", masked)
 	templ.Handler(authtmpl.RegisterPartial(email)).ServeHTTP(w, r)
 }
 
@@ -381,7 +381,14 @@ func setAuthCookies(w http.ResponseWriter, pair identity.TokenPair) {
 func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_access", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_refresh", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: "", Path: "/", MaxAge: -1})
+	clearTempAuthCookies(w)
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_tenant", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1})
+}
+
+// clearTempAuthCookies removes one-time auth state cookies that should not survive past auth.
+// loxtu_tenant, loxtu_access, loxtu_refresh are preserved (tenant / session).
+func clearTempAuthCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "loxtu_consent", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: "", Path: "/", MaxAge: -1})
 }

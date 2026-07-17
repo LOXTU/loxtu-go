@@ -111,7 +111,12 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 	if err == nil {
 		setAuthCookies(w, pair)
 		http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: user.Email, Path: "/", MaxAge: 3600})
-	}
+		http.SetCookie(w, &http.Cookie{
+			Name: "loxtu_tenant", Value: tenantNS,
+			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		})
+		clearTempAuthCookies(w)
+		}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "redirect": "/dashboard"})
 }
 
@@ -137,12 +142,12 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[passkey] skip IssueTokens: %v", err)
 	} else {
 		setAuthCookies(w, pair)
-		http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: email, Path: "/", MaxAge: 3600})
 		http.SetCookie(w, &http.Cookie{
 			Name: "loxtu_tenant", Value: tenantNS,
 			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		})
 	}
+	clearTempAuthCookies(w)
 	// HTMX: redirect to dashboard via HX-Redirect header (SPA navigation).
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)
