@@ -6,8 +6,15 @@
 (function () {
   'use strict';
 
+  // Guard: prevent double-initialization (HTMX script re-execution).
+  if (window.__passkeyInitialized) return;
+  window.__passkeyInitialized = true;
+
   // ── AbortController for conditional mediation ──
   var conditionalAbortController = null;
+
+  // ── Guard: prevent concurrent registration ──
+  var registrationInProgress = false;
 
   // ── Conditional Mediation (passkey autofill) ──
 
@@ -202,6 +209,11 @@
   }
 
   async function registerPasskey(email) {
+    if (registrationInProgress) {
+      console.warn('[passkey] Registration already in progress, ignoring duplicate call.');
+      return;
+    }
+    registrationInProgress = true;
     console.log('[passkey] Starting registration for', email);
 
     try {
@@ -273,6 +285,8 @@
       } else {
         alert('Passkey error: ' + err.message);
       }
+    } finally {
+      registrationInProgress = false;
     }
   }
 

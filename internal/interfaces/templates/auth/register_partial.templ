@@ -6,7 +6,6 @@ import (
 
 // RegisterPartial — passkey setup card for HTMX swap into #auth-container.
 templ RegisterPartial(email string) {
-	<script src="/static/js/passkey.js" defer></script>
 	@components.CardAuth() {
 		<div class="ds-auth-header">
 			@components.Heading1("Set up passkey")
