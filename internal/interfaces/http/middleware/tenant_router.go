@@ -119,7 +119,22 @@ func lookupDomain(ctx context.Context, resolver TenantResolver, domain string) s
 		log.Printf("[tenant] ResolveByDomain(%s): %v", domain, err)
 		return ""
 	}
-	return code
+	if code != "" {
+		return code
+	}
+	// Try parent domain: app.loxtu.com → loxtu.com
+	if i := strings.IndexByte(domain, '.'); i >= 0 && i < len(domain)-1 {
+		parent := domain[i+1:]
+		if strings.Contains(parent, ".") {
+			code, err = resolver.ResolveByDomain(ctx, parent)
+			if err != nil {
+				log.Printf("[tenant] ResolveByDomain(%s): %v", parent, err)
+				return ""
+			}
+			return code
+		}
+	}
+	return ""
 }
 
 // requestHost returns lowercased Host without port.
