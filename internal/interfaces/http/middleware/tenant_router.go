@@ -60,7 +60,6 @@ func TenantRouter(next http.Handler) http.Handler {
 func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
 	// Priority 1: JWT (authenticated requests)
 	if claims := getJWTClaims(r); claims != nil && claims.TenantNS != "" {
-		log.Printf("[tenant] Priority 1 (JWT): NS=%s", claims.TenantNS)
 		return claims.TenantNS
 	}
 
@@ -68,7 +67,6 @@ func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
 	if host := requestHost(r); host != "" {
 		// Prefer full host for whitelist; also try root domain of Host
 		if code := lookupDomain(r.Context(), resolver, host); code != "" {
-			log.Printf("[tenant] Priority 2 (Host): NS=%s host=%s", code, host)
 			return code
 		}
 		if sub := leftmostLabel(host); sub != "" && sub != "www" && sub != "app" {
@@ -88,20 +86,17 @@ func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
 		if domain := domainFromEmail(email); domain != "" {
 			code, err := resolver.ResolveByDomain(r.Context(), domain)
 			if err != nil {
-				log.Printf("[tenant] Priority 3 domain lookup error: %v", err)
+				log.Printf("[tenant] domain lookup error: %v", err)
 			}
 			if code != "" {
-				log.Printf("[tenant] Priority 3 (email domain): NS=%s domain=%s", code, domain)
 				return code
 			}
-			log.Printf("[tenant] Priority 3: domain not in whitelist, public (domain=%s)", domain)
 			return "public"
 		}
 	}
 
 	// Priority 4: pre_auth_state cookie (set after OTP send with known NS)
 	if state := getPreAuthState(r); state != nil && state.TenantNS != "" {
-		log.Printf("[tenant] Priority 4 (pre_auth_state): NS=%s", state.TenantNS)
 		return state.TenantNS
 	}
 
