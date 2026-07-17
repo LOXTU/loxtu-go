@@ -1,0 +1,20 @@
+package components
+
+// Switch toggle.
+templ Switch(id string, name string, label string, checked bool, disabled bool) {
+	<label class="ds-switch" for={ id }>
+		<input
+			type="checkbox"
+			id={ id }
+			name={ name }
+			class="ds-switch__input"
+			role="switch"
+			checked?={ checked }
+			disabled?={ disabled }
+		/>
+		<span class="ds-switch__track" aria-hidden="true"></span>
+		if label != "" {
+			<span class="ds-switch__label">{ label }</span>
+		}
+	</label>
+}

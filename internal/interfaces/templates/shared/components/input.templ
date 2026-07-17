@@ -1,0 +1,37 @@
+package components
+
+// InputField glass input with optional label, helper, errMsg.
+templ InputField(name string, inputType string, label string, placeholder string, value string, errMsg string, disabled bool, helper string, autocomplete string, autofocus bool) {
+	<div class="ds-field">
+		if label != "" {
+			<label class="ds-label" for={ name }>{ label }</label>
+		}
+		<input
+			id={ name }
+			name={ name }
+			type={ inputTypeOrText(inputType) }
+			class={ "input-glass", "input-auth", templ.KV("input-error", errMsg != "") }
+			placeholder={ placeholder }
+			value={ value }
+			disabled?={ disabled }
+			if autocomplete != "" {
+				autocomplete={ autocomplete }
+			}
+			if autofocus {
+				autofocus
+			}
+		/>
+		if errMsg != "" {
+			<p class="ds-field-error">{ errMsg }</p>
+		} else if helper != "" {
+			<p class="ds-field-helper">{ helper }</p>
+		}
+	</div>
+}
+
+func inputTypeOrText(t string) string {
+	if t == "" {
+		return "text"
+	}
+	return t
+}

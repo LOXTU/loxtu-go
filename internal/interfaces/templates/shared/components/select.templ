@@ -1,0 +1,21 @@
+package components
+
+// SelectOption for SelectField.
+type SelectOption struct {
+	Value string
+	Label string
+}
+
+// SelectField glass select.
+templ SelectField(name string, label string, options []SelectOption, selected string, disabled bool) {
+	<div class="ds-field">
+		if label != "" {
+			<label class="ds-label" for={ name }>{ label }</label>
+		}
+		<select id={ name } name={ name } class="input-glass ds-select" disabled?={ disabled }>
+			for _, opt := range options {
+				<option value={ opt.Value } selected?={ opt.Value == selected }>{ opt.Label }</option>
+			}
+		</select>
+	</div>
+}

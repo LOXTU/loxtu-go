@@ -1,0 +1,39 @@
+package components
+
+// Icon wraps an SVG path under /static/icons. size: sm | md | lg
+templ Icon(name string, size string, alt string) {
+	<img
+		src={ "/static/icons/" + name + ".svg" }
+		alt={ altOrDefault(alt, name) }
+		class={ "ds-icon", "ds-icon--"+iconSize(size) }
+		width={ iconPx(size) }
+		height={ iconPx(size) }
+	/>
+}
+
+func altOrDefault(alt, name string) string {
+	if alt != "" {
+		return alt
+	}
+	return name
+}
+
+func iconSize(s string) string {
+	switch s {
+	case "sm", "lg":
+		return s
+	default:
+		return "md"
+	}
+}
+
+func iconPx(s string) string {
+	switch s {
+	case "sm":
+		return "16"
+	case "lg":
+		return "32"
+	default:
+		return "24"
+	}
+}

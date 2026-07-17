@@ -1,0 +1,68 @@
+package dashboard
+
+import (
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/dashboard/widgets"
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/layouts"
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+)
+
+// DashboardShell — full HTML dashboard page
+templ DashboardShell(email string, jsonLD string) {
+	@layouts.Base("LOXTU — Dashboard", dashboardBody(email, jsonLD))
+}
+
+templ dashboardBody(email string, jsonLD string) {
+	<script type="application/ld+json">{ jsonLD }</script>
+	@components.Container("full") {
+		@DashboardHeader(email)
+		<div id="dashboard-grid" class="bento-grid" hx-get="/dashboard/grid" hx-trigger="load" hx-swap="innerHTML">
+			<div class="bento-item bento-item--static" style="grid-column:1/-1;">
+				@components.Spinner("md")
+				@components.Text("muted", "Loading dashboard...")
+			</div>
+		</div>
+	}
+	<!-- Detail Panel Overlay -->
+	<div id="detail-overlay" class="detail-overlay"></div>
+	<div id="detail-panel" class="glass-heavy detail-panel">
+		<button class="close-btn" type="button">✕</button>
+		<div id="detail-panel-content"></div>
+	</div>
+}
+
+templ DashboardHeader(email string) {
+	<div class="dash-sub-header">
+		<p class="dashboard-subtitle">
+			Signed in as <strong class="ds-text--body">{ email }</strong>
+			@components.Badge("success", "authenticated")
+		</p>
+		<form action="/auth/logout" method="POST">
+			@components.Button("secondary", "submit", false, false, false) {
+				Sign out
+			}
+		</form>
+	</div>
+}
+
+// DashboardGrid assembles mock widgets into the bento grid.
+templ DashboardGrid() {
+	@widgets.StatsWidget("Active Flights", "12", "currently in operation", "stats1")
+	@widgets.StatsWidget("Gate Utilisation", "87%", "+3% vs yesterday", "stats2")
+	@widgets.StatsWidget("On-Time Rate", "94%", "above target", "stats3")
+	@widgets.FactWidget("Crew Briefing", "3 crew schedule changes in the next hour. Review at 14:00.")
+	@widgets.ActionsWidget()
+	@widgets.StatsWidget("Messages", "5", "2 urgent", "stats4")
+	@widgets.StatsWidget("Departures", "8", "all on schedule", "stats5")
+}
+
+// DetailPanelContent — only body for #detail-panel-content
+templ DetailPanelContent(title string, value string, label string, detail string) {
+	<div class="ds-widget-body">
+		<div class="dashboard-stats-value">{ value }</div>
+		@components.Heading3(title)
+		@components.Text("secondary", label)
+		@components.Divider("horizontal")
+		@components.Heading4("Details")
+		@components.Text("secondary", detail)
+	</div>
+}

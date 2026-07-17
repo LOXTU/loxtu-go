@@ -1,0 +1,11 @@
+package components
+
+// Alert static banner. variant: success | error | info | warning
+templ Alert(variant string, title string, message string) {
+	<div class={ "ds-alert", "ds-alert--"+toastVariant(variant) } role="alert">
+		if title != "" {
+			<strong class="ds-alert__title">{ title }</strong>
+		}
+		<p class="ds-alert__msg">{ message }</p>
+	</div>
+}

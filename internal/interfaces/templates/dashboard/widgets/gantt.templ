@@ -1,0 +1,18 @@
+package widgets
+
+import "github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+
+// GanttWidget placeholder for turnaround timeline (Phase 2).
+templ GanttWidget() {
+	@components.BentoItem("fact", false) {
+		<div class="ds-widget-header">
+			@components.Heading4("Turnaround Gantt")
+			@components.Badge("neutral", "soon")
+		</div>
+		@components.EmptyState("No active turnarounds", "Flight timeline widgets ship in Phase 2.") {
+			@components.ButtonLink("secondary", "#", false) {
+				View flights
+			}
+		}
+	}
+}

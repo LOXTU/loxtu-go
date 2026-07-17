@@ -1,0 +1,10 @@
+package components
+
+// Divider orientation: "horizontal" | "vertical"
+templ Divider(orientation string) {
+	if orientation == "vertical" {
+		<div class="ds-divider ds-divider--vertical" role="separator" aria-orientation="vertical"></div>
+	} else {
+		<hr class="ds-divider ds-divider--horizontal" role="separator"/>
+	}
+}

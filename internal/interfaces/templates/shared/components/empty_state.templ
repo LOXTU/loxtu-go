@@ -1,0 +1,10 @@
+package components
+
+// EmptyState when lists have no data.
+templ EmptyState(title string, message string) {
+	<div class="ds-empty">
+		@Heading3(title)
+		@Text("muted", message)
+		{ children... }
+	</div>
+}

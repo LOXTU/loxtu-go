@@ -1,0 +1,18 @@
+package components
+
+// Toast transient notification. variant: success | error | info | warning
+templ Toast(id string, variant string, message string) {
+	<div id={ id } class={ "ds-toast", "ds-toast--"+toastVariant(variant) } role="status">
+		<span class="ds-toast__msg">{ message }</span>
+		<button type="button" class="ds-toast__close" data-toast-dismiss={ id } aria-label="Dismiss">✕</button>
+	</div>
+}
+
+func toastVariant(v string) string {
+	switch v {
+	case "success", "error", "info", "warning":
+		return v
+	default:
+		return "info"
+	}
+}

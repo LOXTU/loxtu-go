@@ -1,0 +1,21 @@
+package components
+
+// Badge pill. variant: success | warning | error | info | neutral | emerald | gold
+templ Badge(variant string, text string) {
+	<span class={ "badge", "badge-"+resolveBadge(variant) }>{ text }</span>
+}
+
+func resolveBadge(v string) string {
+	switch v {
+	case "success", "emerald":
+		return "emerald"
+	case "warning", "gold":
+		return "gold"
+	case "error":
+		return "error"
+	case "info":
+		return "info"
+	default:
+		return "neutral"
+	}
+}

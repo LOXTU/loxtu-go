@@ -1,0 +1,21 @@
+package components
+
+// Avatar shows image URL or initials. size: sm | md | lg
+templ Avatar(src string, initials string, size string) {
+	<span class={ "ds-avatar", "ds-avatar--"+avatarSize(size) } aria-hidden={ src == "" && initials == "" }>
+		if src != "" {
+			<img src={ src } alt="" class="ds-avatar__img"/>
+		} else {
+			<span class="ds-avatar__initials">{ initials }</span>
+		}
+	</span>
+}
+
+func avatarSize(s string) string {
+	switch s {
+	case "sm", "lg":
+		return s
+	default:
+		return "md"
+	}
+}

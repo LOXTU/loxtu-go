@@ -1,0 +1,22 @@
+package components
+
+// BentoGrid is the responsive dashboard grid shell.
+templ BentoGrid() {
+	<div class="bento-grid" id="dashboard-grid">
+		{ children... }
+	</div>
+}
+
+// BentoItem is one glass cell. area maps to CSS grid-area class bento-card-{area}.
+// clickable enables cursor/hover affordance.
+templ BentoItem(area string, clickable bool) {
+	<div
+		class={
+			"bento-item", "fade-in-up", "flex-col",
+			templ.KV("bento-card-"+area, area != ""),
+			templ.KV("bento-item--static", !clickable),
+		}
+	>
+		{ children... }
+	</div>
+}

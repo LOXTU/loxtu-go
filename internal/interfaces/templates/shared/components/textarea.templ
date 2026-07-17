@@ -1,0 +1,30 @@
+package components
+
+import "fmt"
+
+// TextareaField multiline glass input.
+templ TextareaField(name string, label string, placeholder string, value string, rows int, errMsg string, disabled bool) {
+	<div class="ds-field">
+		if label != "" {
+			<label class="ds-label" for={ name }>{ label }</label>
+		}
+		<textarea
+			id={ name }
+			name={ name }
+			class={ "input-glass", "ds-textarea", templ.KV("input-error", errMsg != "") }
+			placeholder={ placeholder }
+			rows={ rowsOrDefault(rows) }
+			disabled?={ disabled }
+		>{ value }</textarea>
+		if errMsg != "" {
+			<p class="ds-field-error">{ errMsg }</p>
+		}
+	</div>
+}
+
+func rowsOrDefault(r int) string {
+	if r <= 0 {
+		return "4"
+	}
+	return fmt.Sprintf("%d", r)
+}

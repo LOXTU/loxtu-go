@@ -14,6 +14,16 @@
   --color-text-primary: #F8FAFC;
   --color-text-secondary: #94A3B8;
   --color-text-muted: #64748B;
+  --color-status-error: #EF4444;
+  --color-status-error-soft: rgba(239, 68, 68, 0.12);
+  --color-status-info: #38BDF8;
+  --color-status-info-soft: rgba(56, 189, 248, 0.12);
+  --color-status-warning: var(--color-gold-soft);
+  --color-status-warning-soft: rgba(244, 183, 64, 0.12);
+  --color-status-success: var(--color-emerald-ice);
+  --color-status-success-soft: rgba(45, 212, 191, 0.12);
+  --color-status-neutral: var(--color-text-secondary);
+  --color-status-neutral-soft: rgba(148, 163, 184, 0.12);
 
   --color-glass-border: rgba(255, 255, 255, 0.05);
   --color-glass-border-hover: rgba(255, 255, 255, 0.12);

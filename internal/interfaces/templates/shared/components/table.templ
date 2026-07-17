@@ -1,0 +1,37 @@
+package components
+
+// TableColumn describes a table header.
+type TableColumn struct {
+	Key   string
+	Label string
+}
+
+// TableRow is a map of column key -> cell text.
+type TableRow map[string]string
+
+// Table basic data table with optional sort keys (aria only for now).
+templ Table(columns []TableColumn, rows []TableRow, caption string) {
+	<div class="ds-table-wrap">
+		<table class="ds-table">
+			if caption != "" {
+				<caption class="ds-table__caption">{ caption }</caption>
+			}
+			<thead>
+				<tr>
+					for _, c := range columns {
+						<th scope="col" data-sort-key={ c.Key }>{ c.Label }</th>
+					}
+				</tr>
+			</thead>
+			<tbody>
+				for _, row := range rows {
+					<tr>
+						for _, c := range columns {
+							<td>{ row[c.Key] }</td>
+						}
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}

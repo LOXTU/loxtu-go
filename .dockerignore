@@ -1,0 +1,26 @@
+# Secrets & Local configs
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+loxtu-go
+*_templ.go
+
+# Docs (optional, to save build context size)
+README.md
+ARCHITECTURE.md

@@ -1,0 +1,15 @@
+package components
+
+// Link styled anchor. variant: primary | muted | danger
+templ Link(href string, variant string, text string) {
+	<a href={ templ.SafeURL(href) } class={ "ds-link", "ds-link--"+linkVariant(variant) }>{ text }</a>
+}
+
+func linkVariant(v string) string {
+	switch v {
+	case "muted", "danger":
+		return v
+	default:
+		return "primary"
+	}
+}

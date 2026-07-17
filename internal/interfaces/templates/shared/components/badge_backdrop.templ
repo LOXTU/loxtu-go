@@ -1,0 +1,8 @@
+package components
+
+// BadgeBackdrop wraps content with soft tinted surface matching badge variant.
+templ BadgeBackdrop(variant string) {
+	<div class={ "ds-badge-backdrop", "ds-badge-backdrop--"+resolveBadge(variant) }>
+		{ children... }
+	</div>
+}

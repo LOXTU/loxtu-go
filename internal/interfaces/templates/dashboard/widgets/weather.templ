@@ -1,0 +1,17 @@
+package widgets
+
+import "github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+
+// WeatherWidget mock METAR / standing weather.
+templ WeatherWidget() {
+	@components.BentoItem("stats5", true) {
+		<div class="ds-widget-header">
+			@components.Heading4("Weather")
+			@components.Badge("warning", "METAR")
+		</div>
+		<div class="ds-widget-body">
+			@components.Heading2("12°C")
+			@components.Text("secondary", "Wind 240°/12 kt · Visibility 10 km")
+		</div>
+	}
+}

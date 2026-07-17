@@ -1,0 +1,8 @@
+package components
+
+// Tooltip wraps trigger content; title is native + styled bubble on hover.
+templ Tooltip(text string) {
+	<span class="ds-tooltip" data-tooltip={ text }>
+		{ children... }
+	</span>
+}

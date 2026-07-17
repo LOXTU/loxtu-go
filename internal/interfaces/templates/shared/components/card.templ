@@ -1,0 +1,22 @@
+package components
+
+// Card glass surface. elevation: "light" | "default" | "heavy". hover enables lift.
+templ Card(elevation string, hover bool) {
+	<div
+		class={
+			"card-glass",
+			templ.KV("glass-light", elevation == "light"),
+			templ.KV("glass-heavy", elevation == "heavy"),
+			templ.KV("card-glass--no-hover", !hover),
+		}
+	>
+		{ children... }
+	</div>
+}
+
+// CardAuth is the auth-form glass card sizing.
+templ CardAuth() {
+	<div id="auth-container" class="card-glass card-auth fade-in-up ds-w-full">
+		{ children... }
+	</div>
+}

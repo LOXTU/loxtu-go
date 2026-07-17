@@ -1,0 +1,15 @@
+package components
+
+// LabelText variants: default | warning | error | success | info | muted
+templ LabelText(variant string, text string) {
+	<span class={ "ds-label-text", "ds-label-text--"+labelVariant(variant) }>{ text }</span>
+}
+
+func labelVariant(v string) string {
+	switch v {
+	case "warning", "error", "success", "info", "muted":
+		return v
+	default:
+		return "default"
+	}
+}

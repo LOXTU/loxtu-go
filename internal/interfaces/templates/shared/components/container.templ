@@ -1,0 +1,9 @@
+package components
+
+// Container wraps content with max-width + horizontal padding from tokens.
+// size: "sm" | "md" | "lg" | "full"
+templ Container(size string) {
+	<div class={ "ds-container", "ds-container--"+size }>
+		{ children... }
+	</div>
+}

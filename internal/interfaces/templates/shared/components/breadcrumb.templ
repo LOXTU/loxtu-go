@@ -1,0 +1,27 @@
+package components
+
+// BreadcrumbItem crumb.
+type BreadcrumbItem struct {
+	Label string
+	Href  string
+}
+
+// Breadcrumb trail.
+templ Breadcrumb(items []BreadcrumbItem) {
+	<nav class="ds-breadcrumb" aria-label="Breadcrumb">
+		<ol class="ds-breadcrumb__list">
+			for i, it := range items {
+				<li class="ds-breadcrumb__item">
+					if it.Href != "" && i < len(items)-1 {
+						<a href={ templ.SafeURL(it.Href) } class="ds-link ds-link--muted">{ it.Label }</a>
+					} else {
+						<span aria-current="page">{ it.Label }</span>
+					}
+					if i < len(items)-1 {
+						<span class="ds-breadcrumb__sep" aria-hidden="true">/</span>
+					}
+				</li>
+			}
+		</ol>
+	</nav>
+}

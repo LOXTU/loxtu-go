@@ -1,0 +1,15 @@
+package components
+
+// Spinner size: sm | md | lg
+templ Spinner(size string) {
+	<span class={ "ds-spinner", "ds-spinner--"+spinnerSize(size) } role="status" aria-label="Loading"></span>
+}
+
+func spinnerSize(s string) string {
+	switch s {
+	case "sm", "lg":
+		return s
+	default:
+		return "md"
+	}
+}

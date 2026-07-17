@@ -1,0 +1,17 @@
+package components
+
+// Modal overlay + panel. id must be unique. Close via data-modal-close or Escape (base JS).
+templ Modal(id string, title string) {
+	<div id={ id } class="ds-modal" role="dialog" aria-modal="true" aria-labelledby={ id+"-title" } hidden>
+		<div class="ds-modal__overlay" data-modal-close={ id }></div>
+		<div class="ds-modal__panel glass-heavy">
+			<div class="ds-modal__header">
+				<h3 id={ id+"-title" } class="ds-heading-3">{ title }</h3>
+				<button type="button" class="ds-modal__close close-btn" data-modal-close={ id } aria-label="Close">✕</button>
+			</div>
+			<div class="ds-modal__body">
+				{ children... }
+			</div>
+		</div>
+	</div>
+}

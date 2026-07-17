@@ -1,0 +1,23 @@
+package widgets
+
+import "github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+
+// ActionsWidget quick-action stack.
+templ ActionsWidget() {
+	@components.BentoItem("actions", false) {
+		<div class="ds-widget-header">
+			@components.Heading4("Quick Actions")
+		</div>
+		<div class="ds-actions-stack">
+			@components.ButtonLink("primary", "#", true) {
+				Delay Report
+			}
+			@components.ButtonLink("secondary", "#", true) {
+				Ramp Check
+			}
+			@components.ButtonLink("gold", "#", true) {
+				Fuel Order
+			}
+		</div>
+	}
+}

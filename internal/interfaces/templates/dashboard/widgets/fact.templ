@@ -1,0 +1,13 @@
+package widgets
+
+import "github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+
+// FactWidget wide narrative tile (crew briefing, notices).
+templ FactWidget(title string, text string) {
+	@components.BentoItem("fact", false) {
+		<div class="ds-widget-header">
+			@components.Heading4(title)
+		</div>
+		@components.Text("secondary", text)
+	}
+}

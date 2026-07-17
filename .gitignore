@@ -1,12 +1,10 @@
-# Go
+# Binaries
 *.exe
-*.exe~
 *.dll
 *.so
 *.dylib
 *.test
 *.out
-go.sum
 
 # IDE
 .idea/
@@ -18,6 +16,11 @@ go.sum
 .DS_Store
 Thumbs.db
 
-# Env
+# Env (host only — never bake into image)
 .env
 .env.local
+.env.*
+!.env.example
+
+# Build artifacts
+bin/

@@ -1,0 +1,56 @@
+package components
+
+// Button variants: primary | secondary | ghost | danger | gold
+// typeAttr: button | submit | reset
+templ Button(variant string, typeAttr string, disabled bool, loading bool, fullWidth bool) {
+	<button
+		type={ buttonType(typeAttr) }
+		class={
+			"btn",
+			"btn-"+buttonVariant(variant),
+			templ.KV("w-full", fullWidth),
+			templ.KV("btn--loading", loading),
+			templ.KV("btn--disabled", disabled),
+		}
+		disabled?={ disabled || loading }
+	>
+		if loading {
+			<span class="ds-spinner ds-spinner--sm" aria-hidden="true"></span>
+		}
+		{ children... }
+	</button>
+}
+
+// ButtonLink renders an anchor with button styles.
+templ ButtonLink(variant string, href string, fullWidth bool) {
+	<a
+		href={ templ.SafeURL(href) }
+		class={
+			"btn",
+			"btn-"+buttonVariant(variant),
+			templ.KV("w-full", fullWidth),
+		}
+	>
+		{ children... }
+	</a>
+}
+
+func buttonType(t string) string {
+	if t == "" {
+		return "button"
+	}
+	return t
+}
+
+func buttonVariant(v string) string {
+	switch v {
+	case "primary", "secondary", "gold":
+		return v
+	case "ghost":
+		return "secondary"
+	case "danger":
+		return "danger"
+	default:
+		return "primary"
+	}
+}

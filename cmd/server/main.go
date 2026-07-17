@@ -1,4 +1,5 @@
-// Package main is the LOXTU application entry point.
+// Package main is the LOXTU Composition Root: config → adapters → core → HTTP.
+// No package-level service locators (db.DB, EmailClient). Only constructor DI.
 package main
 
 import (
@@ -13,13 +14,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/loxtu/loxtu-go/internal/features/auth"
-	"github.com/loxtu/loxtu-go/internal/features/dashboard"
-	"github.com/loxtu/loxtu-go/internal/features/passkey"
-	"github.com/loxtu/loxtu-go/internal/infrastructure/email"
-	"github.com/loxtu/loxtu-go/internal/platform/audit"
-	"github.com/loxtu/loxtu-go/internal/platform/db"
-	mw "github.com/loxtu/loxtu-go/internal/platform/middleware"
+	"github.com/loxtu/loxtu-go/internal/adapters/messaging/smtp"
+	"github.com/loxtu/loxtu-go/internal/adapters/persistence/surrealdb"
+	"github.com/loxtu/loxtu-go/internal/adapters/ratelimit"
+	"github.com/loxtu/loxtu-go/internal/config"
+	"github.com/loxtu/loxtu-go/internal/core/identity"
+	"github.com/loxtu/loxtu-go/internal/interfaces/http/handlers"
+	imw "github.com/loxtu/loxtu-go/internal/interfaces/http/middleware"
+	"github.com/loxtu/loxtu-go/web"
 )
 
 func main() {
@@ -28,62 +30,89 @@ func main() {
 	log.Printf("[main] LOXTU starting on %s", addr)
 	log.Printf("[main] LOXTU_VERSION=%s", envOr("LOXTU_VERSION", "dev"))
 
-	// ── Step 1: Initialise DB Connection Pool ──
-	pool, err := db.PoolFromEnv()
+	// ── Config (ENV only here / config package) ───────────────────────────
+	dbCfg := config.SurrealDBFromEnv()
+	smtpCfg := config.SMTPFromEnv()
+	rpID := envOr("WEBAUTHN_RPID", "app.loxtu.com")
+	rpOrigin := envOr("WEBAUTHN_ORIGIN", "https://app.loxtu.com")
+
+	if os.Getenv("LOXTU_JWT_SECRET") == "" {
+		log.Fatal("[main] LOXTU_JWT_SECRET is not set")
+	}
+
+	// ── Adapters ──────────────────────────────────────────────────────────
+	ctx, cancelInit := context.WithTimeout(context.Background(), 30*time.Second)
+	pool, err := surrealdb.NewPool(ctx, dbCfg)
+	cancelInit()
 	if err != nil {
 		log.Fatalf("[main] DB pool init failed: %v", err)
 	}
-	db.DB = pool
+	defer pool.Close()
 
-	// Run control_plane migration
-	cpSQL := db.LoadMigrationFile("internal/platform/db/migrations/control_plane/001_tenant.surrealql")
-	if cpSQL != "" {
-		if err := db.RunMigration("control_plane", cpSQL); err != nil {
-			log.Printf("[main] WARNING: control_plane migration failed: %v", err)
-		}
+	users := surrealdb.NewUserRepo(pool)
+	sessions := surrealdb.NewSessionRepo(pool)
+	creds := surrealdb.NewCredRepo(pool)
+	tenantRepo := surrealdb.NewTenantRepo(pool)
+	auditR := surrealdb.NewAuditRepo(pool)
+	defer auditR.Stop()
+
+	mail := smtp.New(smtpCfg)
+
+	// ── Core services ─────────────────────────────────────────────────────
+	otpService := identity.NewOTPService(mail)
+	tokenService := identity.NewTokenService(users, sessions)
+
+	wa, err := identity.NewWebAuthn(rpID, rpOrigin)
+	if err != nil {
+		log.Fatalf("[main] WebAuthn init failed: %v", err)
 	}
+	passkeyService := identity.NewPasskeyService(users, creds, wa)
 
-	// Seed development data (3 tenants + their NS migrations)
-	db.SeedDevelopmentData()
+	rateLimiter := ratelimit.NewMemoryRateLimiter()
+	passkeyPresence := handlers.PasskeyPresenceFunc(func(ctx context.Context, tenantNS, email string) bool {
+		u, err := passkeyService.GetUser(ctx, email, tenantNS)
+		return err == nil && u != nil && len(u.Credentials) > 0
+	})
 
-	// Run audit migration
-	if err := audit.RunMigration(); err != nil {
-		log.Printf("[main] WARNING: audit migration failed: %v", err)
-	}
+	// ── HTTP handlers (constructor DI only) ───────────────────────────────
+	authH := handlers.NewAuthHandler(
+		otpService,
+		tokenService,
+		users,
+		auditR,
+		rateLimiter,
+		nil, // ConsentChecker — wire audit consent adapter when ready
+		passkeyPresence,
+	)
+	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, auditR)
+	dashH := handlers.NewDashboardHandler()
 
-	log.Printf("[main] Database ready")
-
-	// ── Step 2: Email Client ──
-	emailCfg := email.DefaultConfig()
-	emailClient := email.New(emailCfg)
-	auth.EmailClient = emailClient
-
-	// ── Step 3: WebAuthn Passkey ──
-	passkey.InitWebAuthn("app.loxtu.com", "https://app.loxtu.com")
-
-	// ── Step 4: Router ──
+	// ── Router ────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
-
-	// Global middleware
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
-	r.Use(mw.TenantRouter)
-	r.Use(mw.DBContext)
-	r.Use(mw.RequestID)
-	r.Use(mw.SecurityHeaders)
+	r.Use(imw.NewTenantRouter(tenantRepo))
+	r.Use(imw.RequestID)
+	r.Use(imw.SecurityHeaders)
 
-	// Static files (logged separately to avoid noise; use Write/ReadTimeout)
-	fileServer := http.FileServer(http.Dir("./web/static"))
+	// Static (embedded)
+	fileServer := http.FileServer(http.FS(web.StaticFiles))
 	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
-	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./web/static/icons/favicon.svg")
-	})
+	r.Get("/favicon.ico", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := web.StaticFiles.ReadFile("static/icons/favicon.svg")
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = w.Write(data)
+	}))
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
-	// Auth group (CSRF + RateLimit, NO Guard)
+	// Auth + passkey (CSRF + rate limit; Guard not applied)
 	authPublicPaths := []string{
 		"/health", "/auth/otp/send", "/auth/otp/verify",
 		"/auth/passkey/begin", "/auth/passkey/finish",
@@ -92,19 +121,19 @@ func main() {
 		"/auth/refresh", "/auth/logout", "/auth/consent", "/static/",
 	}
 	r.Group(func(r chi.Router) {
-		r.Use(mw.CSRF(authPublicPaths))
-		r.Use(mw.RateLimit(nil))
-		auth.Mount(r)
-		passkey.Mount(r)
+		r.Use(imw.CSRF(authPublicPaths))
+		r.Use(imw.RateLimit(nil))
+		authH.Mount(r)
+		pkH.Mount(r)
 	})
 
-	// Protected group (with Guard)
+	// Protected dashboard
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Guard)
-		dashboard.Mount(r)
+		r.Use(handlers.Guard)
+		dashH.Mount(r)
 	})
 
-	// ── Step 5: HTTP Server with Graceful Shutdown ──
+	// ── HTTP server + graceful shutdown ──────────────────────────────────
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      r,
@@ -113,7 +142,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown goroutine
 	go func() {
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -122,20 +150,14 @@ func main() {
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("[main] HTTP server shutdown error: %v", err)
 		}
-
-		if db.DB != nil {
-			db.DB.Close()
-			log.Printf("[main] DB pool connections closed")
-		}
-
-		log.Printf("[main] Server exited cleanly")
+		// pool.Close and auditR.Stop run via defers on main return
+		log.Printf("[main] Server exiting cleanly")
 	}()
 
-	log.Printf("[main] LOXTU listening on %s", addr)
+	log.Printf("[main] LOXTU listening on %s (composition root: adapters→core→handlers)", addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("[main] server error: %v", err)
 	}

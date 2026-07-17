@@ -1,0 +1,21 @@
+package components
+
+// Checkbox with title + description (consent-style).
+templ Checkbox(id string, name string, title string, description string, checked bool, required bool) {
+	<label for={ id } class="ds-checkbox">
+		<input
+			type="checkbox"
+			id={ id }
+			name={ name }
+			class="consent-checkbox ds-checkbox__input"
+			checked?={ checked }
+			required?={ required }
+		/>
+		<span class="ds-checkbox__body">
+			<span class="ds-checkbox__title">{ title }</span>
+			if description != "" {
+				<span class="ds-checkbox__desc">{ description }</span>
+			}
+		</span>
+	</label>
+}

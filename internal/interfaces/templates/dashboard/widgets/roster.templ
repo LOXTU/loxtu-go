@@ -1,0 +1,15 @@
+package widgets
+
+import "github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+
+// RosterWidget mock crew roster preview.
+templ RosterWidget() {
+	@components.BentoItem("stats4", true) {
+		<div class="ds-widget-header">
+			@components.Heading4("Roster")
+			@components.Badge("info", "preview")
+		</div>
+		@components.Skeleton(4)
+		@components.Text("muted", "Crew assignments load with operations module.")
+	}
+}

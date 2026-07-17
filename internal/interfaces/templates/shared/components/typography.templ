@@ -1,0 +1,38 @@
+package components
+
+templ Heading1(text string) {
+	<h1 class="ds-heading-1">{ text }</h1>
+}
+templ Heading2(text string) {
+	<h2 class="ds-heading-2">{ text }</h2>
+}
+templ Heading3(text string) {
+	<h3 class="ds-heading-3">{ text }</h3>
+}
+templ Heading4(text string) {
+	<h4 class="ds-heading-4 bento-title">{ text }</h4>
+}
+templ Heading5(text string) {
+	<h5 class="ds-heading-5">{ text }</h5>
+}
+templ Heading6(text string) {
+	<h6 class="ds-heading-6">{ text }</h6>
+}
+
+// Text body. variant: body | muted | secondary | bold | code
+templ Text(variant string, text string) {
+	if variant == "code" {
+		<code class="ds-text ds-text--code">{ text }</code>
+	} else {
+		<p class={ "ds-text", "ds-text--"+textVariant(variant) }>{ text }</p>
+	}
+}
+
+func textVariant(v string) string {
+	switch v {
+	case "muted", "secondary", "bold":
+		return v
+	default:
+		return "body"
+	}
+}

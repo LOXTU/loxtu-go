@@ -28,8 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=builder /build/loxtu-go .
 COPY --from=builder /build/web ./web
-COPY --from=builder /build/internal/platform/db/migrations ./internal/platform/db/migrations
-
+COPY --from=builder /build/migrations ./migrations
 EXPOSE ${LOXTU_PORT:-8880}
 
 CMD ["./loxtu-go"]

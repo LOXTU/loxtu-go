@@ -1,0 +1,29 @@
+package components
+
+// TabItem for Tabs.
+type TabItem struct {
+	ID    string
+	Label string
+	Href  string
+}
+
+// Tabs navigation. activeID marks the selected tab.
+templ Tabs(items []TabItem, activeID string) {
+	<nav class="ds-tabs" role="tablist">
+		for _, t := range items {
+			<a
+				href={ templ.SafeURL(tabHref(t)) }
+				class={ "ds-tabs__item", templ.KV("ds-tabs__item--active", t.ID == activeID) }
+				role="tab"
+				aria-selected={ t.ID == activeID }
+			>{ t.Label }</a>
+		}
+	</nav>
+}
+
+func tabHref(t TabItem) string {
+	if t.Href != "" {
+		return t.Href
+	}
+	return "#" + t.ID
+}

@@ -1,0 +1,34 @@
+package auth
+
+import (
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/layouts"
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+)
+
+// RegisterPage renders passkey setup after OTP.
+templ RegisterPage(email string) {
+	@layouts.Base("LOXTU — Set up passkey", pageBody(email))
+}
+
+templ pageBody(email string) {
+	<script src="/static/js/passkey.js" defer></script>
+	<div class="login-body">
+		@components.CardAuth() {
+			<div class="ds-auth-header">
+				@components.Heading1("Set up passkey")
+				@components.Text("secondary", "Use Face ID, Touch ID, or your device PIN for faster sign-in next time.")
+			</div>
+			<form class="ds-auth-form">
+				<input type="hidden" name="email" value={ email }/>
+				<div class="ds-auth-form-body">
+					<button type="button" class="btn btn-primary btn-auth js-register-passkey" data-email={ email }>
+						Register passkey
+					</button>
+					<button type="button" class="btn btn-secondary js-skip-passkey" data-email={ email }>
+						Skip for now
+					</button>
+				</div>
+			</form>
+		}
+	</div>
+}

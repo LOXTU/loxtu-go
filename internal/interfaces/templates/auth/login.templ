@@ -1,0 +1,128 @@
+package auth
+
+import (
+	"fmt"
+
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/layouts"
+	"github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+)
+
+// LoginShell — full HTML page
+templ LoginShell() {
+	@layouts.Base("LOXTU — Sign in", loginPage())
+}
+
+templ loginPage() {
+	<div class="login-body">
+		@LoginFormPartial()
+	</div>
+}
+
+// LoginFormPartial — email form
+templ LoginFormPartial() {
+	<script src="/static/js/passkey.js" defer></script>
+	@components.CardAuth() {
+		<div class="ds-auth-header">
+			@components.Heading1("Authorisation required")
+			@components.Text("secondary", "Enter your email to receive a verification code")
+		</div>
+		<form
+			hx-post="/auth/otp/send"
+			hx-target="#auth-container"
+			hx-swap="outerHTML"
+			class="ds-auth-form"
+		>
+			<div class="ds-auth-form-body">
+				@components.InputField("email", "email", "", "you@airline.com", "", "", false, "", "username webauthn", true)
+				<div class="ds-auth-row">
+					@components.Button("primary", "submit", false, false, false) {
+						Send verification code
+					}
+					<button
+						type="button"
+						class="btn-passkey-icon js-signin-passkey"
+						id="passkey-signin-btn"
+						title="Sign in with passkey"
+						hidden
+					>
+						@components.Icon("passkey", "md", "Passkey")
+					</button>
+				</div>
+			</div>
+		</form>
+	}
+}
+
+// OTPFormPartial — first OTP screen
+templ OTPFormPartial(email string) {
+	@components.CardAuth() {
+		@OTPHeader(email)
+		@OTPBody(email, "")
+	}
+}
+
+// OTPErrorPartial — error + resend
+templ OTPErrorPartial(email string, message string) {
+	@components.CardAuth() {
+		@OTPErrorHeader(message)
+		@OTPBody(email, "otp-box-error")
+	}
+}
+
+templ OTPHeader(email string) {
+	<div class="ds-auth-header">
+		@components.Heading1("Check your email")
+		<p class="ds-text ds-text--secondary">
+			We sent a code to <strong class="ds-text--body">{ email }</strong>
+		</p>
+	</div>
+}
+
+templ OTPErrorHeader(message string) {
+	<div class="ds-auth-header">
+		@components.Alert("error", "", message)
+	</div>
+}
+
+templ OTPBody(email string, boxClass string) {
+	<form
+		id="otp-form"
+		hx-post="/auth/otp/verify"
+		hx-target="#auth-container"
+		hx-swap="outerHTML"
+		class="ds-auth-form"
+	>
+		<input type="hidden" name="email" value={ email }/>
+		<div class="ds-auth-form-body">
+			<div class="otp-boxes" role="group" aria-label="One-time code">
+				for i := 0; i < 6; i++ {
+					<input
+						type="text"
+						name="code"
+						class={ templ.KV("otp-box", true), templ.KV(boxClass, boxClass != "") }
+						inputmode="numeric"
+						pattern="[0-9]"
+						maxlength="1"
+						autocomplete="one-time-code"
+						required
+						autofocus?={ i == 0 }
+						data-index={ fmt.Sprintf("%d", i) }
+					/>
+				}
+			</div>
+		</div>
+		@components.Button("primary", "submit", false, false, true) {
+			Verify
+		}
+		<button
+			type="button"
+			class="btn btn-secondary w-full"
+			hx-post="/auth/otp/send"
+			hx-target="#auth-container"
+			hx-swap="outerHTML"
+			hx-vals={ fmt.Sprintf(`{"email":"%s"}`, email) }
+		>
+			Resend code
+		</button>
+	</form>
+}

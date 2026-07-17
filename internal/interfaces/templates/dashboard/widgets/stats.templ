@@ -1,0 +1,29 @@
+package widgets
+
+import "github.com/loxtu/loxtu-go/internal/interfaces/templates/shared/components"
+
+// StatsWidget KPI cell. area → bento grid-area class.
+templ StatsWidget(title string, value string, label string, area string) {
+	<div
+		class={
+			"bento-item", "fade-in-up", "flex-col",
+			templ.KV("bento-card-"+area, area != ""),
+		}
+		itemscope
+		itemtype="https://schema.org/StructuredData"
+		hx-get={ "/dashboard/panel/stats?title=" + templ.URL(title) + "&value=" + templ.URL(value) + "&label=" + templ.URL(label) }
+		hx-target="#detail-panel-content"
+		hx-swap="innerHTML transition:true"
+		hx-trigger="click"
+	>
+		<div class="ds-widget-header">
+			@components.Heading4(title)
+			@components.Badge("success", "live")
+		</div>
+		<div class="ds-widget-body">
+			<data class="dashboard-stats-value" itemprop="value" value={ value }>{ value }</data>
+			<p class="dashboard-stats-label bento-secondary">{ label }</p>
+		</div>
+		<meta itemprop="name" content={ title }/>
+	</div>
+}
