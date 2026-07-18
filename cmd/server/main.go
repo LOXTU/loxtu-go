@@ -115,6 +115,7 @@ func main() {
 		otpService,
 		tokenService,
 		users,
+		tenantRepo,
 		auditR,
 		rateLimiter,
 		passkeyPresence,

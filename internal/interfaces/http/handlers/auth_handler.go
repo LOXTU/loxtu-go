@@ -31,6 +31,7 @@ type AuthHandler struct {
 	otp      *identity.OTPService
 	tokens   *identity.TokenService
 	users    identity.UserStore
+	tenants  mw.TenantResolver // for email domain → tenant resolution
 	audit    audit.Store
 	rl       identity.RateLimiter
 	passkeys PasskeyPresence // optional
@@ -42,6 +43,7 @@ func NewAuthHandler(
 	otp *identity.OTPService,
 	tokens *identity.TokenService,
 	users identity.UserStore,
+	tenants mw.TenantResolver,
 	auditStore audit.Store,
 	rl identity.RateLimiter,
 	passkeys PasskeyPresence,
@@ -51,6 +53,7 @@ func NewAuthHandler(
 		otp:      otp,
 		tokens:   tokens,
 		users:    users,
+		tenants:  tenants,
 		audit:    auditStore,
 		rl:       rl,
 		passkeys: passkeys,
@@ -106,10 +109,12 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve tenant from email domain
-	tenantID := mw.GetTenantCode(r.Context())
-	if tenantID == "" {
-		tenantID = "public"
+	// Resolve tenant from EMAIL domain (not from cookie/router)
+	tenantID := "public"
+	if domain := emailDomain(email); domain != "" && h.tenants != nil {
+		if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
+			tenantID = code
+		}
 	}
 
 	// Find or create user
@@ -423,4 +428,13 @@ func clearTempAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_consent", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: "", Path: "/", MaxAge: -1})
+}
+
+// emailDomain extracts the domain part of an email address.
+func emailDomain(email string) string {
+	parts := strings.SplitN(strings.TrimSpace(email), "@", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return ""
+	}
+	return strings.ToLower(parts[1])
 }
