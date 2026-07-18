@@ -74,14 +74,13 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 		"aaguid": cred.AAGUID,
 		"be":     cred.BackupEligible,
 		"bs":     cred.BackupState,
-		"ca":     cred.CreatedAt,
 	}
-	// Delete existing credential with same kid (if any)
+	// Delete existing credential with same kid (if any) — by user_id only to avoid bytes in WHERE
 	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		"DELETE passkey_credentials WHERE kid = $kid AND user_id = $uid", vars)
-	// Create new credential
+		"DELETE passkey_credentials WHERE user_id = $uid AND kid = $kid", vars)
+	// Create new credential — created_at uses DEFAULT time::now()
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs, created_at = $ca`,
+		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs`,
 		vars,
 	)
 	return err
