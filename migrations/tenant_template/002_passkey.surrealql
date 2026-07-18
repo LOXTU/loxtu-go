@@ -15,6 +15,9 @@ DEFINE TABLE passkey_users SCHEMAFULL;
 DEFINE FIELD user_id ON passkey_users TYPE string;
     -- UUID пользователя (ссылка на users.user_id).
 
+DEFINE FIELD tenant_id ON passkey_users TYPE string;
+    -- ID тенанта (для изоляции запросов).
+
 DEFINE FIELD handle ON passkey_users TYPE bytes;
     -- WebAuthn userHandle (бинарный UUID пользователя).
     -- Используется браузером для discoverable credentials.
