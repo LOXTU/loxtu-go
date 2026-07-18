@@ -28,7 +28,7 @@ func (r *CredRepo) SaveUser(ctx context.Context, userID string, handle []byte, t
 		return fmt.Errorf("db not connected")
 	}
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`UPSERT passkey_users CONTENT { user_id: $uid, handle: $handle, tenant_id: $tid }`,
+		`UPSERT passkey_users SET user_id = $uid, handle = $handle, tenant_id = $tid`,
 		map[string]any{"uid": userID, "handle": handle, "tid": tenantID},
 	)
 	return err
