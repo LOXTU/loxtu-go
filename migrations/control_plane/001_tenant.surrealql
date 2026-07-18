@@ -1,26 +1,72 @@
 -- ==================================================================
--- control_plane/001_tenant.surrealql
--- Tenant registry — one record per tenant (namespace).
--- Run ONCE per control_plane NS/DB, NOT per tenant namespace.
+-- ФАЙЛ:    control_plane/001_tenant.surrealql
+-- КУДА:    NS=control_plane, DB=control_plane (ТОЛЬКО ОДИН РАЗ)
 -- ==================================================================
 
+-- ── Таблица: tenant ──────────────────────────────────────────────
 DEFINE TABLE tenant SCHEMAFULL;
-DEFINE FIELD code             ON tenant TYPE string;
-DEFINE FIELD name             ON tenant TYPE string;
-DEFINE FIELD type             ON tenant TYPE string;
+
+-- Идентификация тенанта
+DEFINE FIELD tenant_id ON tenant TYPE string;
+DEFINE FIELD name      ON tenant TYPE string;
+DEFINE FIELD type      ON tenant TYPE string;
+
+-- Маршрутизация
 DEFINE FIELD domain_whitelist ON tenant TYPE array<string>;
-DEFINE FIELD settings         ON tenant TYPE option<object>;
-DEFINE FIELD quotas           ON tenant TYPE option<object>;
-DEFINE FIELD created_at       ON tenant TYPE datetime DEFAULT time::now();
 
-DEFINE INDEX idx_tenant_code ON tenant FIELDS code UNIQUE;
+-- Feature Flags
+DEFINE FIELD features ON tenant TYPE array<string> DEFAULT ["roster", "turnaround"];
 
--- Seed: default tenant
+DEFINE FIELD security_policy                               ON tenant TYPE object;
+DEFINE FIELD security_policy.mfa_required                  ON tenant TYPE bool     DEFAULT false;
+DEFINE FIELD security_policy.pin_enabled                   ON tenant TYPE bool     DEFAULT false;
+DEFINE FIELD security_policy.access_token_timeout_minutes  ON tenant TYPE int      DEFAULT 15;
+DEFINE FIELD security_policy.refresh_token_timeout_minutes ON tenant TYPE int      DEFAULT 480;
+
+DEFINE FIELD quotas           ON tenant TYPE object;
+DEFINE FIELD quotas.max_users ON tenant TYPE int      DEFAULT 100;
+
+DEFINE FIELD created_at ON tenant TYPE datetime DEFAULT time::now();
+
+-- Индексы
+DEFINE INDEX idx_tenant_tenant_id ON tenant FIELDS tenant_id UNIQUE;
+
+-- ==================================================================
+-- SEED: Тенант LOXTU (платформа, mfa_required=false)
+-- ==================================================================
 CREATE tenant:loxtu CONTENT {
-    code: "loxtu",
-    name: "LOXTU Default",
-    type: "airport",
+    tenant_id: "loxtu",
+    name: "LOXTU Platform",
+    type: "default",
     domain_whitelist: ["loxtu.com"],
-    settings: {},
-    quotas: {}
+    features: ["roster", "turnaround", "gant", "advanced_audit"],
+    security_policy: {
+        mfa_required: false,
+        pin_enabled: true,
+        access_token_timeout_minutes: 15,
+        refresh_token_timeout_minutes: 480
+    },
+    quotas: {
+        max_users: 1000
+    }
+};
+
+-- ==================================================================
+-- SEED: Тенант Aer Lingus (клиент, mfa_required=true)
+-- ==================================================================
+CREATE tenant:aerlingus CONTENT {
+    tenant_id: "aerlingus",
+    name: "Aer Lingus",
+    type: "enterprise",
+    domain_whitelist: ["aerlingus.com"],
+    features: ["roster", "turnaround"],
+    security_policy: {
+        mfa_required: true,
+        pin_enabled: true,
+        access_token_timeout_minutes: 15,
+        refresh_token_timeout_minutes: 480
+    },
+    quotas: {
+        max_users: 5000
+    }
 };

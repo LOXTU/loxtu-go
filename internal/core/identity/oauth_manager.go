@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // ExternalIdentity is a normalised profile from Google / Apple / Entra adapters.
@@ -17,50 +18,51 @@ type ExternalIdentity struct {
 
 // OAuthManager links external IdPs to LOXTU users and issues tokens.
 type OAuthManager struct {
-	users UserStore
+	users    UserStore
+	sessions SessionStore
 }
 
 // NewOAuthManager constructs the OAuth domain service.
-func NewOAuthManager(users UserStore) *OAuthManager {
-	return &OAuthManager{users: users}
+func NewOAuthManager(users UserStore, sessions SessionStore) *OAuthManager {
+	return &OAuthManager{users: users, sessions: sessions}
 }
 
-// LinkAndIssue resolves or creates a minimal user and issues tokens.
-// Does not persist refresh — caller saves TokenPair.RefreshHash via SessionStore.
-func (m *OAuthManager) LinkAndIssue(ctx context.Context, tenantNS string, ext ExternalIdentity, role string) (TokenPair, *User, error) {
+// LinkAndIssue resolves or creates a user and issues tokens.
+func (m *OAuthManager) LinkAndIssue(ctx context.Context, tenantID string, ext ExternalIdentity, role string) (TokenPair, *User, error) {
 	if ext.Email == "" {
 		return TokenPair{}, nil, fmt.Errorf("external identity missing email")
 	}
-	if tenantNS == "" {
-		tenantNS = "public"
+	if tenantID == "" {
+		tenantID = "public"
 	}
 	if role == "" {
 		role = "worker"
 	}
 
 	hash := EmailHash(ext.Email)
-	user, err := m.users.FindByEmailHash(ctx, tenantNS, hash)
+	user, err := m.users.FindByEmailHash(ctx, hash)
 	if err != nil || user == nil {
-		actorID, cerr := m.users.CreateMinimalUser(ctx, tenantNS, hash)
-		if cerr != nil {
+		// Create minimal user
+		user = &User{
+			UserID:    generateUUIDv7(),
+			EmailHash: hash,
+			TenantID:  tenantID,
+			Role:      role,
+			Status:    "active",
+			IsActive:  true,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if cerr := m.users.Create(ctx, user); cerr != nil {
 			return TokenPair{}, nil, fmt.Errorf("create user: %w", cerr)
 		}
-		user = &User{
-			ActorID:   actorID,
-			EmailHash: hash,
-			TenantNS:  tenantNS,
-			Email:     ext.Email,
-			Role:      role,
-			IsActive:  true,
-		}
 	} else {
-		user.Email = ext.Email
 		if user.Role == "" {
 			user.Role = role
 		}
 	}
 
-	pair, err := IssueTokens(ext.Email, tenantNS, user.EmployeeID, user.Role)
+	pair, err := IssueTokens(user.UserID, tenantID, user.Role, user.Permissions, AccessTokenTTL)
 	if err != nil {
 		return TokenPair{}, nil, err
 	}
@@ -78,4 +80,11 @@ func MapEntraGroups(groups []string) string {
 		}
 	}
 	return "worker"
+}
+
+// generateUUIDv7 is a placeholder — real impl uses google/uuid.
+// Adapters will call uuid.New() directly; this is for core-only compilation.
+func generateUUIDv7() string {
+	// Placeholder — composition root wires real UUID generation.
+	return fmt.Sprintf("placeholder-uuid-v7")
 }

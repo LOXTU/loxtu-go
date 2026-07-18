@@ -1,26 +1,57 @@
 -- ==================================================================
--- tenant_template/002_passkey.surrealql
--- WebAuthn passkey tables — users, credentials.
--- actor_id is a required record<users> reference (NOT optional).
+-- ФАЙЛ:    tenant_template/002_passkey.surrealql
+-- КУДА:    NS=<tenant_id>, DB=<tenant_id>
+-- АГЕНТУ:  WebAuthn/Passkey — отдельная сущность аутентификации.
+--          НЕ содержит PII (никаких email!). Только user_id + handle.
+--          Две таблицы: passkey_users (связь user↔WebAuthn handle)
+--          и passkey_credentials (сами ключи).
 -- ==================================================================
 
--- ── Passkey Users ──────────────────────────────────────────────────────────
-
+-- ── Таблица: passkey_users ───────────────────────────────────────
+-- Связь пользователя с его WebAuthn handle (userHandle).
+-- Одна запись = один пользователь с хотя бы одним passkey.
 DEFINE TABLE passkey_users SCHEMAFULL;
-DEFINE FIELD actor_id  ON passkey_users TYPE record<users>;
-DEFINE FIELD handle    ON passkey_users TYPE bytes;
-DEFINE FIELD email     ON passkey_users TYPE option<string>;
 
--- ── Passkey Credentials ─────────────────────────────────────────────────────
+DEFINE FIELD user_id ON passkey_users TYPE string;
+    -- UUID пользователя (ссылка на users.user_id).
 
+DEFINE FIELD handle ON passkey_users TYPE bytes;
+    -- WebAuthn userHandle (бинарный UUID пользователя).
+    -- Используется браузером для discoverable credentials.
+
+DEFINE INDEX idx_passkey_users_user_id ON passkey_users FIELDS user_id UNIQUE;
+    -- Один пользователь = одна запись (уникальный handle).
+
+-- ── Таблица: passkey_credentials ─────────────────────────────────
+-- Все WebAuthn-ключи пользователя (может быть несколько устройств).
 DEFINE TABLE passkey_credentials SCHEMAFULL;
-DEFINE FIELD actor_id        ON passkey_credentials TYPE record<users>;
-DEFINE FIELD kid             ON passkey_credentials TYPE bytes;
-DEFINE FIELD public_key      ON passkey_credentials TYPE bytes;
-DEFINE FIELD transports      ON passkey_credentials TYPE option<array<string>>;
-DEFINE FIELD sign_count      ON passkey_credentials TYPE int DEFAULT 0;
-DEFINE FIELD aaguid          ON passkey_credentials TYPE option<string>;
-DEFINE FIELD backup_eligible ON passkey_credentials TYPE option<bool>;
-DEFINE FIELD backup_state    ON passkey_credentials TYPE option<bool>;
 
-DEFINE INDEX idx_pk_kid ON passkey_credentials FIELDS kid UNIQUE;
+DEFINE FIELD user_id ON passkey_credentials TYPE string;
+    -- UUID владельца ключа.
+
+DEFINE FIELD kid ON passkey_credentials TYPE bytes;
+    -- Credential ID (уникальный идентификатор ключа).
+
+DEFINE FIELD public_key ON passkey_credentials TYPE bytes;
+    -- Публичный ключ (используется для верификации подписи).
+
+DEFINE FIELD transports ON passkey_credentials TYPE option<array<string>>;
+    -- Способы связи с аутентификатором: ["usb", "ble", "nfc", "internal", "hybrid"].
+
+DEFINE FIELD sign_count ON passkey_credentials TYPE int DEFAULT 0;
+    -- Счётчик подписей (для обнаружения клонирования ключа).
+
+DEFINE FIELD aaguid ON passkey_credentials TYPE option<string>;
+    -- ID типа аутентификатора (YubiKey, iCloud Keychain, etc.).
+
+DEFINE FIELD backup_eligible ON passkey_credentials TYPE option<bool>;
+    -- Может ли ключ быть синхронизирован (synced passkey).
+
+DEFINE FIELD backup_state ON passkey_credentials TYPE option<bool>;
+    -- Синхронизирован ли ключ сейчас.
+
+DEFINE INDEX idx_passkey_credentials_kid ON passkey_credentials FIELDS kid UNIQUE;
+    -- Быстрый поиск ключа по ID при входе.
+
+DEFINE INDEX idx_passkey_credentials_user_id ON passkey_credentials FIELDS user_id;
+    -- Получить все ключи пользователя (UI управления ключами).

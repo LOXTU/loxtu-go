@@ -1,0 +1,25 @@
+-- ==================================================================
+-- ФАЙЛ:    tenant_template/005_user_pins.surrealql
+-- КУДА:    NS=<tenant_id>, DB=<tenant_id>
+-- АГЕНТУ:  PIN-код как ОТДЕЛЬНЫЙ метод аутентификации (как Passkey).
+--          Разрешён только если tenant.security_policy.pin_enabled = true.
+--          Хранится ТОЛЬКО хэш (Argon2id), сам PIN никогда не сохраняется.
+-- ==================================================================
+
+DEFINE TABLE user_pins SCHEMAFULL;
+
+DEFINE FIELD user_id ON user_pins TYPE string;
+    -- UUID владельца PIN.
+
+DEFINE FIELD pin_hash ON user_pins TYPE string;
+    -- Argon2id(pin + salt). Однонаправленный хэш.
+    -- Salt хранится вместе с хэшем (стандарт Argon2).
+
+DEFINE FIELD created_at ON user_pins TYPE datetime DEFAULT time::now();
+    -- Время установки PIN.
+
+DEFINE FIELD last_used_at ON user_pins TYPE option<datetime>;
+    -- Время последнего использования (для ротации/аналитики).
+
+DEFINE INDEX idx_user_pins_user_id ON user_pins FIELDS user_id UNIQUE;
+    -- Один пользователь = один PIN (уникальная связь).

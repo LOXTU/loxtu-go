@@ -1,0 +1,33 @@
+-- ==================================================================
+-- ФАЙЛ:    tenant_template/006_user_devices.surrealql
+-- КУДА:    NS=<tenant_id>, DB=<tenant_id>
+-- АГЕНТУ:  Устройства пользователя (отдельная сущность, НЕ часть users).
+--          Хранит VAPID-endpoint для push-уведомлений, device fingerprint.
+--          Один пользователь может иметь НЕСКОЛЬКО устройств.
+-- ==================================================================
+
+DEFINE TABLE user_devices SCHEMAFULL;
+
+DEFINE FIELD user_id ON user_devices TYPE string;
+    -- UUID владельца устройства.
+
+DEFINE FIELD device_id ON user_devices TYPE string;
+    -- Уникальный ID устройства (UUID, генерируется на клиенте).
+
+DEFINE FIELD device_type ON user_devices TYPE option<string>;
+    -- Тип устройства: "ios", "android", "web", "desktop".
+
+DEFINE FIELD vapid_endpoint ON user_devices TYPE option<string>;
+    -- URL для push-уведомлений через Web Push API (VAPID).
+
+DEFINE FIELD created_at ON user_devices TYPE datetime DEFAULT time::now();
+    -- Время первой регистрации устройства.
+
+DEFINE FIELD last_active_at ON user_devices TYPE option<datetime>;
+    -- Время последней активности (для очистки неактивных устройств).
+
+DEFINE INDEX idx_user_devices_user_id ON user_devices FIELDS user_id;
+    -- Получить все устройства пользователя (UI, push-рассылка).
+
+DEFINE INDEX idx_user_devices_device_id ON user_devices FIELDS device_id UNIQUE;
+    -- Уникальный device_id во всей системе.

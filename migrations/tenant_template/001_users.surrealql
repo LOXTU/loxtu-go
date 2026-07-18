@@ -1,32 +1,130 @@
 -- ==================================================================
--- tenant_template/001_users.surrealql
--- Users table — employees within a tenant namespace.
--- Progressive Profiling: created with minimal fields on OTP Send,
--- enriched with full data on Passkey Finish.
--- All optional fields use option<TYPE> so a minimal record works.
+-- ФАЙЛ:    tenant_template/001_users.surrealql
+-- КУДА:    NS=<tenant_id>, DB=<tenant_id> (loxtu, aerlingus, public etc.)
+-- АГЕНТУ:  Ядро системы. Хранит идентификацию, PII (в зашифрованном
+--          виде через Envelope Encryption), RBAC и lifecycle-статус.
+--          user_id — единый идентификатор пользователя ВЕЗДЕ в системе.
+--          НЕ содержит методов аутентификации (они в отдельных таблицах).
 -- ==================================================================
 
 DEFINE TABLE users SCHEMAFULL;
 
--- Identity (strict — required at creation)
-DEFINE FIELD email_hash       ON users TYPE string;
-DEFINE FIELD tenant_id        ON users TYPE string;
-DEFINE FIELD is_active        ON users TYPE bool;
+-- ── Идентификация ────────────────────────────────────────────────
+DEFINE FIELD user_id ON users TYPE string;
+    -- Единый идентификатор пользователя (UUID v7).
+    -- Используется ВЕЗДЕ: в JWT, в логах, в других таблицах.
+    -- Формат: "550e8400-e29b-41d4-a716-446655440000".
+    -- В JWT маппится на claim "user_id".
 
--- Progressive Profiling — optional, filled on Passkey Finish
-DEFINE FIELD email            ON users TYPE option<string>;
-DEFINE FIELD name             ON users TYPE option<string>;
-DEFINE FIELD surname          ON users TYPE option<string>;
-DEFINE FIELD role             ON users TYPE option<string>;
-DEFINE FIELD department       ON users TYPE option<string>;
-DEFINE FIELD section          ON users TYPE option<string>;
-DEFINE FIELD base             ON users TYPE option<string>;
-DEFINE FIELD skills           ON users TYPE option<array<string>>;
-DEFINE FIELD vapid_endpoint   ON users TYPE option<string>;
-DEFINE FIELD pin_hash         ON users TYPE option<string>;
-DEFINE FIELD oauth_provider   ON users TYPE option<string>;
-DEFINE FIELD oauth_sub        ON users TYPE option<string>;
+DEFINE FIELD tenant_id ON users TYPE string;
+    -- ID тенанта, которому принадлежит пользователь.
+    -- Совпадает с tenant_id из control_plane.tenant.
+    -- Пример: "loxtu", "aerlingus".
 
--- Indexes
+-- ── Lifecycle и статусы ──────────────────────────────────────────
+DEFINE FIELD status ON users TYPE string DEFAULT 'pending';
+    -- Жизненный цикл пользователя.
+    -- "pending"   — начал регистрацию, не завершил (можно отправить reminder).
+    -- "active"    — полностью зарегистрирован, может входить.
+    -- "suspended" — временно заблокирован (админом или системой).
+    -- "erased"    — GDPR Article 17, PII уничтожена через crypto-shredding.
+
+DEFINE FIELD registration_attempts ON users TYPE int DEFAULT 0;
+    -- Счётчик попыток завершить регистрацию (статистика, НЕ rate limit).
+    -- Инкрементируется при каждом запросе OTP/Passkey регистрации.
+
+DEFINE FIELD login_count ON users TYPE int DEFAULT 0;
+    -- Общее количество успешных входов (аналитика).
+
+DEFINE FIELD failed_login_count ON users TYPE int DEFAULT 0;
+    -- Счётчик неудачных попыток входа (для NIS2: блокировка после N попыток).
+
+DEFINE FIELD last_login_at ON users TYPE option<datetime>;
+    -- Время последнего успешного входа.
+    -- Используется для обнаружения неактивных аккаунтов.
+
+DEFINE FIELD locked_until ON users TYPE option<datetime>;
+    -- Временная блокировка после N неудачных попыток (NIS2).
+    -- Если NULL — пользователь не заблокирован.
+
+DEFINE FIELD hire_date ON users TYPE option<datetime>;
+    -- Дата найма (для интеграции с HR, срок действия аккаунта).
+
+-- ── Lookup и маскирование (для поиска и логов) ───────────────────
+DEFINE FIELD email_hash ON users TYPE string;
+    -- SHA-256(email + pepper) для БЫСТРОГО поиска по email.
+    -- Pepper — секретный ключ из ENV (LOXTU_HASH_PEPPER).
+    -- При crypto-shredding (статус "erased") перезаписывается на rand::string(32).
+
+DEFINE FIELD masked_email ON users TYPE option<string>;
+    -- Замаскированный email для UI и логов: "v***v@loxtu.com".
+    -- НЕ шифруется (считается анонимизированными данными по GDPR).
+    -- Хранится для быстрого отображения без расшифровки ciphertext.
+
+-- ── Envelope Encryption (GDPR Art. 17 — Crypto-Shredding) ────────
+DEFINE FIELD encrypted_dek ON users TYPE bytes;
+    -- Data Encryption Key (DEK), зашифрованный мастер-ключом (KEK).
+    -- KEK хранится в ENV (LOXTU_DATA_KEY).
+    -- Уникален для КАЖДОГО пользователя.
+    -- При удалении пользователя (GDPR) это поле уничтожается →
+    -- ВСЕ ciphertext'ы становятся нечитаемым мусором (включая бэкапы).
+
+-- ── PII (Encrypted через AES-256-GCM с DEK) ──────────────────────
+DEFINE FIELD email_ciphertext ON users TYPE option<bytes>;
+    -- Зашифрованный email. Нужен для: отправки OTP, GDPR Art. 20 (экспорт),
+    -- интеграций с внешними системами.
+
+DEFINE FIELD name_ciphertext ON users TYPE option<bytes>;
+    -- Зашифрованное имя.
+
+DEFINE FIELD surname_ciphertext ON users TYPE option<bytes>;
+    -- Зашифрованная фамилия.
+
+DEFINE FIELD phone_ciphertext ON users TYPE option<bytes>;
+    -- Зашифрованный мобильный номер (устанавливается позже админом/юзером).
+
+DEFINE FIELD dob_ciphertext ON users TYPE option<bytes>;
+    -- Зашифрованная дата рождения (PII).
+
+DEFINE FIELD employee_id_ciphertext ON users TYPE option<bytes>;
+    -- Зашифрованный табельный номер (PII, интеграция с HR).
+
+DEFINE FIELD employee_id_hash ON users TYPE option<string>;
+    -- SHA-256(employee_id + pepper) для поиска по табельному номеру.
+    -- Опционально, заполняется если нужна уникальная идентификация по employee_id.
+
+-- ── RBAC (Role-Based Access Control) ─────────────────────────────
+DEFINE FIELD role ON users TYPE option<string>;
+    -- Роль пользователя: "handler", "supervisor", "admin", "dispatcher".
+    -- Определяет базовый набор permissions.
+
+DEFINE FIELD permissions ON users TYPE option<array<string>>;
+    -- Явные разрешения: ["flights.read", "turnaround.write", "roster.admin"].
+    -- Переопределяют или дополняют роль.
+
+-- ── Организационная структура ────────────────────────────────────
+DEFINE FIELD department ON users TYPE option<string>;
+    -- Департамент (например, "Operations", "Ramp").
+
+DEFINE FIELD section ON users TYPE option<string>;
+    -- Секция внутри департамента.
+
+DEFINE FIELD base ON users TYPE option<string>;
+    -- База/аэропорт приписки (например, "DUB", "BOS").
+
+DEFINE FIELD skills ON users TYPE option<array<string>>;
+    -- Квалификации: ["pushback", "chocks", "belt_loader"].
+    -- Используется в roster-модуле для назначения на рейсы.
+
+-- ── Индексы ──────────────────────────────────────────────────────
+DEFINE INDEX idx_users_user_id ON users FIELDS user_id UNIQUE;
+    -- Основной индекс по UUID.
+
 DEFINE INDEX idx_users_email_hash ON users FIELDS email_hash UNIQUE;
-DEFINE INDEX idx_users_email      ON users FIELDS email UNIQUE;
+    -- Для поиска пользователя по email при входе.
+
+DEFINE INDEX idx_users_tenant_id ON users FIELDS tenant_id;
+    -- Для агрегации пользователей по тенанту (админка).
+
+DEFINE INDEX idx_users_employee_id_hash ON users FIELDS employee_id_hash UNIQUE;
+    -- Для поиска по табельному номеру (HR-интеграции).

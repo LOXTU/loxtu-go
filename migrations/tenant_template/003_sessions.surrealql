@@ -1,13 +1,31 @@
 -- ==================================================================
--- tenant_template/003_sessions.surrealql
--- JWT refresh token sessions.
--- actor_id is a required record<users> reference.
+-- ФАЙЛ:    tenant_template/003_sessions.surrealql
+-- КУДА:    NS=<tenant_id>, DB=<tenant_id>
+-- АГЕНТУ:  Хранит JWT Refresh Tokens. Access Tokens не хранятся
+--          (они короткоживущие, stateless, проверяются по подписи).
+--          При logout хэш refresh token'а удаляется → ревокация.
 -- ==================================================================
 
 DEFINE TABLE sessions SCHEMAFULL;
-DEFINE FIELD actor_id   ON sessions TYPE record<users>;
-DEFINE FIELD token_hash ON sessions TYPE string;
-DEFINE FIELD created_at ON sessions TYPE datetime;
-DEFINE FIELD expires_at ON sessions TYPE datetime;
 
-DEFINE INDEX idx_sessions_token ON sessions FIELDS token_hash;
+DEFINE FIELD user_id ON sessions TYPE string;
+    -- UUID владельца сессии.
+
+DEFINE FIELD token_hash ON sessions TYPE string;
+    -- SHA-256(refresh_token) для поиска при refresh/logout.
+    -- Сам токен НЕ хранится (только хэш).
+
+DEFINE FIELD created_at ON sessions TYPE datetime;
+    -- Время создания сессии (аудит).
+
+DEFINE FIELD expires_at ON sessions TYPE datetime;
+    -- Время истечения (security_policy.refresh_token_timeout_minutes).
+
+DEFINE INDEX idx_sessions_token_hash ON sessions FIELDS token_hash UNIQUE;
+    -- Быстрый поиск сессии по хэшу refresh token.
+
+DEFINE INDEX idx_sessions_user_id ON sessions FIELDS user_id;
+    -- Массовая ревокация всех сессий пользователя (force logout).
+
+DEFINE INDEX idx_sessions_expires_at ON sessions FIELDS expires_at;
+    -- Фоновая очистка просроченных сессий.

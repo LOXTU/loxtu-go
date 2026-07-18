@@ -1,0 +1,41 @@
+-- ==================================================================
+-- audit_template/001_audit.surrealql
+-- Audit tables: user_consents (GDPR) + security_audit (NIS2).
+-- ПРИМЕНЯТЬ ТОЛЬКО К: NS=audit, DB=<tenant_code> (loxtu, aerlingus, public)
+-- НЕ ПРИМЕНЯТЬ к NS=<tenant>, DB=<tenant>
+-- ==================================================================
+
+DEFINE TABLE user_consents SCHEMAFULL;
+DEFINE FIELD actor_id           ON user_consents TYPE option<string>; 
+DEFINE FIELD tenant_code        ON user_consents TYPE string; 
+DEFINE FIELD actor_email_masked ON user_consents TYPE option<string>;
+DEFINE FIELD privacy_policy     ON user_consents TYPE string;        
+DEFINE FIELD terms_of_service   ON user_consents TYPE string;        
+DEFINE FIELD consent_types      ON user_consents TYPE string;        
+DEFINE FIELD client_ip          ON user_consents TYPE string;
+DEFINE FIELD reqid              ON user_consents TYPE string;
+DEFINE FIELD expires_at         ON user_consents TYPE datetime DEFAULT time::now() + 2y;
+DEFINE FIELD time_stamp         ON user_consents TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX idx_consents_tenant ON user_consents FIELDS tenant_code;
+DEFINE INDEX idx_consents_actor  ON user_consents FIELDS actor_id;
+DEFINE INDEX idx_consents_ts     ON user_consents FIELDS time_stamp;
+
+DEFINE TABLE security_audit SCHEMAFULL;
+DEFINE FIELD actor_id           ON security_audit TYPE option<string>;
+DEFINE FIELD tenant_code        ON security_audit TYPE string; 
+DEFINE FIELD actor_email_masked ON security_audit TYPE option<string>;
+DEFINE FIELD action             ON security_audit TYPE string;       
+DEFINE FIELD resource_type      ON security_audit TYPE option<string>;
+DEFINE FIELD resource_id        ON security_audit TYPE option<string>;
+DEFINE FIELD status             ON security_audit TYPE string;       
+DEFINE FIELD client_ip          ON security_audit TYPE string;
+DEFINE FIELD reqid              ON security_audit TYPE string;
+DEFINE FIELD time_stamp         ON security_audit TYPE datetime DEFAULT time::now();
+DEFINE FIELD expires_at         ON security_audit TYPE datetime DEFAULT time::now() + 2y;
+
+DEFINE INDEX idx_audit_tenant  ON security_audit FIELDS tenant_code;
+DEFINE INDEX idx_audit_action  ON security_audit FIELDS action;
+DEFINE INDEX idx_audit_actor   ON security_audit FIELDS actor_id;
+DEFINE INDEX idx_audit_ts      ON security_audit FIELDS time_stamp;
+DEFINE INDEX idx_audit_status  ON security_audit FIELDS status; -- ДОБАВЛЕНО: для поиска failed-событий

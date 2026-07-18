@@ -1,0 +1,93 @@
+-- ==================================================================
+-- ФАЙЛ:    audit_template/001_audit.surrealql
+-- КУДА:    NS=audit, DB=<tenant_id> (loxtu, aerlingus, public, control_plane)
+-- АГЕНТУ:  ИЗОЛИРОВАННЫЙ аудит (NIS2/SOC2/GDPR). Хранится в отдельном NS.
+--          user_id — строка (НЕ record<users>, т.к. кросс-NS ссылки
+--          в SurrealDB не поддерживаются). tenant_id дублируется в каждой
+--          записи для кросс-базовых агрегационных запросов админа.
+--          Go-адаптер ОБЯЗАН проверять: record.tenant_id == currentTenantID.
+-- ==================================================================
+
+-- ── Таблица: user_consents (GDPR) ────────────────────────────────
+-- История согласий пользователя (GDPR Art. 7).
+DEFINE TABLE user_consents SCHEMAFULL;
+
+DEFINE FIELD user_id ON user_consents TYPE option<string>;
+    -- UUID пользователя (NULL если согласие дано до создания аккаунта).
+
+DEFINE FIELD tenant_id ON user_consents TYPE string;
+    -- ID тенанта (дублируется для кросс-базовых запросов).
+
+DEFINE FIELD masked_email ON user_consents TYPE option<string>;
+    -- Маскированный email на момент согласия ("v***v@loxtu.com").
+    -- Не PII, можно хранить открыто.
+
+DEFINE FIELD privacy_policy ON user_consents TYPE string;
+    -- Версия политики конфиденциальности: "v2.1".
+
+DEFINE FIELD terms_of_service ON user_consents TYPE string;
+    -- Версия условий использования: "v1.4".
+
+DEFINE FIELD consent_types ON user_consents TYPE string;
+    -- Типы согласий через запятую: "gdpr,nis2,soc2,reminders".
+
+DEFINE FIELD client_ip ON user_consents TYPE string;
+    -- IP-адрес клиента на момент согласия (аудит).
+
+DEFINE FIELD reqid ON user_consents TYPE string;
+    -- ID запроса (для трассировки в логах).
+
+DEFINE FIELD expires_at ON user_consents TYPE datetime DEFAULT time::now() + 2y;
+    -- Срок действия согласия (GDPR рекомендует пере-соглашение раз в 2 года).
+
+DEFINE FIELD time_stamp ON user_consents TYPE datetime DEFAULT time::now();
+    -- Точное время дачи согласия.
+
+DEFINE INDEX idx_user_consents_tenant_id ON user_consents FIELDS tenant_id;
+DEFINE INDEX idx_user_consents_user_id ON user_consents FIELDS user_id;
+DEFINE INDEX idx_user_consents_time_stamp ON user_consents FIELDS time_stamp;
+
+-- ── Таблица: security_audit (NIS2) ───────────────────────────────
+-- Все события безопасности (входы, ошибки, админские действия).
+DEFINE TABLE security_audit SCHEMAFULL;
+
+DEFINE FIELD user_id ON security_audit TYPE option<string>;
+    -- UUID пользователя (NULL для анонимных событий, например, failed login).
+
+DEFINE FIELD tenant_id ON security_audit TYPE string;
+    -- ID тенанта (дублируется для кросс-базовых запросов).
+
+DEFINE FIELD masked_email ON security_audit TYPE option<string>;
+    -- Маскированный email для читаемости логов.
+
+DEFINE FIELD action ON security_audit TYPE string;
+    -- Тип события: "auth.otp.send", "auth.otp.verify", "auth.passkey.login",
+    -- "auth.oauth.callback", "auth.logout", "gdpr.erasure.requested", etc.
+
+DEFINE FIELD resource_type ON security_audit TYPE option<string>;
+    -- Тип ресурса: "user", "session", "passkey", "tenant".
+
+DEFINE FIELD resource_id ON security_audit TYPE option<string>;
+    -- ID ресурса (например, session_id при logout).
+
+DEFINE FIELD status ON security_audit TYPE string;
+    -- Результат: "success" | "failure".
+
+DEFINE FIELD client_ip ON security_audit TYPE string;
+    -- IP-адрес клиента.
+
+DEFINE FIELD reqid ON security_audit TYPE string;
+    -- ID запроса (трассировка).
+
+DEFINE FIELD time_stamp ON security_audit TYPE datetime DEFAULT time::now();
+    -- Время события.
+
+DEFINE FIELD expires_at ON security_audit TYPE datetime DEFAULT time::now() + 2y;
+    -- Срок хранения (NIS2 требует минимум 2 года).
+
+DEFINE INDEX idx_security_audit_tenant_id ON security_audit FIELDS tenant_id;
+DEFINE INDEX idx_security_audit_user_id ON security_audit FIELDS user_id;
+DEFINE INDEX idx_security_audit_action ON security_audit FIELDS action;
+DEFINE INDEX idx_security_audit_time_stamp ON security_audit FIELDS time_stamp;
+DEFINE INDEX idx_security_audit_status ON security_audit FIELDS status;
+    -- Для быстрого поиска failed-событий (расследование инцидентов).

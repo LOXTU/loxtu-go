@@ -39,6 +39,11 @@ func main() {
 	if os.Getenv("LOXTU_JWT_SECRET") == "" {
 		log.Fatal("[main] LOXTU_JWT_SECRET is not set")
 	}
+	secCfg, err := config.SecurityFromEnv()
+	if err != nil {
+		log.Fatalf("[main] Security config: %v", err)
+	}
+	_ = secCfg // wired in Phase 3+
 
 	// ── Adapters ──────────────────────────────────────────────────────────
 	ctx, cancelInit := context.WithTimeout(context.Background(), 30*time.Second)

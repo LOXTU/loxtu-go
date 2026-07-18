@@ -12,12 +12,11 @@ import (
 )
 
 // CeremonySession is a single-use WebAuthn challenge (registration or login).
-// No http.Request — handlers pass challenge/response data only.
 type CeremonySession struct {
 	Challenge            string
-	UserID               string
-	UserEmail            string
-	TenantNS             string
+	UserID               string // UUID v7
+	UserEmail            string // plain email for WebAuthn display
+	TenantID             string
 	AllowedCredentialIDs [][]byte
 	Expires              int64
 	UserVerification     string
@@ -57,112 +56,109 @@ func NewWebAuthn(rpid, origin string) (*webauthn.WebAuthn, error) {
 	})
 }
 
-// ResolveActorID finds users.id by email hash via UserStore.
-func (s *PasskeyService) ResolveActorID(ctx context.Context, email, tenantNS string) (string, error) {
-	if tenantNS == "" {
-		tenantNS = "public"
-	}
-	u, err := s.users.FindByEmailHash(ctx, tenantNS, EmailHash(email))
+// ResolveUserID finds users.UserID by email hash via UserStore.
+func (s *PasskeyService) ResolveUserID(ctx context.Context, email string) (string, error) {
+	u, err := s.users.FindByEmailHash(ctx, EmailHash(email))
 	if err != nil {
 		return "", fmt.Errorf("lookup user: %w", err)
 	}
-	if u == nil || u.ActorID == "" {
-		return "", fmt.Errorf("user not found in users table: %s (tenant: %s)", email, tenantNS)
+	if u == nil || u.UserID == "" {
+		return "", fmt.Errorf("user not found: %s", email)
 	}
-	return u.ActorID, nil
+	return u.UserID, nil
 }
 
-// FindOrCreateUser resolves actor then loads/creates passkey principal.
-func (s *PasskeyService) FindOrCreateUser(ctx context.Context, email, tenantNS string) (*PasskeyUser, error) {
-	if tenantNS == "" {
-		tenantNS = "public"
-	}
-
-	actorID, err := s.ResolveActorID(ctx, email, tenantNS)
+// FindOrCreatePasskeyUser resolves user then loads/creates passkey principal.
+func (s *PasskeyService) FindOrCreatePasskeyUser(ctx context.Context, email, tenantID string) (*PasskeyUser, error) {
+	userID, err := s.ResolveUserID(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := s.creds.FindPasskeyUserByActor(ctx, tenantNS, actorID)
-	if err == nil && user != nil {
-		user.Email = email
-		user.TenantNS = tenantNS
-		user.ActorID = actorID
-		return user, nil
+	// Try to load existing passkey user by finding any credential for this user
+	creds, err := s.creds.FindCredentialsByUserID(ctx, userID)
+	if err == nil && len(creds) > 0 {
+		return &PasskeyUser{
+			UserID:      userID,
+			TenantID:    tenantID,
+			Email:       email,
+			Handle:      nil, // will be loaded from passkey_users table
+			Credentials: webauthnCredsFromDomain(creds),
+		}, nil
 	}
 
-	handle, err := GenerateHandleWithTenant(tenantNS)
+	// Create new passkey user
+	handle, err := GenerateHandleWithTenant(tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("generate handle: %w", err)
 	}
-	if err := s.creds.UpsertPasskeyUser(ctx, tenantNS, actorID, email, handle); err != nil {
-		return nil, fmt.Errorf("upsert passkey user: %w", err)
+	if err := s.creds.SaveUser(ctx, userID, handle, tenantID); err != nil {
+		return nil, fmt.Errorf("save passkey user: %w", err)
 	}
 	return &PasskeyUser{
+		UserID:   userID,
+		TenantID: tenantID,
 		Email:    email,
-		TenantNS: tenantNS,
 		Handle:   handle,
-		ActorID:  actorID,
 	}, nil
 }
 
 // GetUser loads passkey user + credentials by email.
-func (s *PasskeyService) GetUser(ctx context.Context, email, tenantNS string) (*PasskeyUser, error) {
-	actorID, err := s.ResolveActorID(ctx, email, tenantNS)
+func (s *PasskeyService) GetUser(ctx context.Context, email string) (*PasskeyUser, error) {
+	userID, err := s.ResolveUserID(ctx, email)
 	if err != nil {
 		return nil, err
 	}
-	user, err := s.creds.FindPasskeyUserByActor(ctx, tenantNS, actorID)
-	if err != nil || user == nil {
-		return nil, fmt.Errorf("passkey user not found: %s", email)
+	creds, err := s.creds.FindCredentialsByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
 	}
-	user.Email = email
-	user.TenantNS = tenantNS
-	user.ActorID = actorID
-	return user, nil
+	if len(creds) == 0 {
+		return nil, fmt.Errorf("no passkey credentials for user %s", userID)
+	}
+	return &PasskeyUser{
+		UserID:      userID,
+		Email:       email,
+		Credentials: webauthnCredsFromDomain(creds),
+	}, nil
 }
 
-// SaveCredential persists a credential for the user's actor.
-func (s *PasskeyService) SaveCredential(ctx context.Context, email, tenantNS string, cred *webauthn.Credential) error {
-	actorID, err := s.ResolveActorID(ctx, email, tenantNS)
-	if err != nil {
-		return err
+// SaveCredential persists a credential for the user.
+func (s *PasskeyService) SaveCredential(ctx context.Context, userID string, cred *webauthn.Credential) error {
+	pc := &PasskeyCredential{
+		CredentialID:   cred.ID,
+		UserID:         userID,
+		PublicKey:      cred.PublicKey,
+		SignCount:      cred.Authenticator.SignCount,
+		Transports:     transportStrings(cred.Transport),
+		AAGUID:         string(cred.Authenticator.AAGUID),
+		BackupEligible: cred.Flags.BackupEligible,
+		BackupState:    cred.Flags.BackupState,
+		CreatedAt:      time.Now(),
 	}
-	return s.creds.SaveCredential(ctx, tenantNS, actorID, cred)
+	return s.creds.SaveCredential(ctx, pc)
 }
 
 // UpdateCredentialSignCount updates sign counter after successful assertion.
-func (s *PasskeyService) UpdateCredentialSignCount(ctx context.Context, email, tenantNS string, kid []byte, newCount int) error {
-	actorID, err := s.ResolveActorID(ctx, email, tenantNS)
-	if err != nil {
-		return err
-	}
-	return s.creds.UpdateSignCount(ctx, tenantNS, actorID, kid, newCount)
+func (s *PasskeyService) UpdateCredentialSignCount(ctx context.Context, userID string, kid []byte, newCount uint32) error {
+	return s.creds.UpdateSignCount(ctx, userID, kid, newCount)
 }
 
-// FindUserByHandle loads user by WebAuthn handle (tenant in handle prefix).
+// FindUserByHandle loads user by WebAuthn handle.
 func (s *PasskeyService) FindUserByHandle(ctx context.Context, userHandle []byte) (*PasskeyUser, error) {
-	tenantNS, _, err := ParseHandle(userHandle)
-	if err != nil {
-		tenantNS = "public"
-	}
-	user, err := s.creds.FindByHandle(ctx, tenantNS, userHandle)
+	user, err := s.creds.FindUserByHandle(ctx, userHandle)
 	if err != nil || user == nil {
 		return nil, fmt.Errorf("user not found by handle")
 	}
-	if user.TenantNS == "" {
-		user.TenantNS = tenantNS
-	}
-	user.Handle = userHandle
 	return user, nil
 }
 
 // BeginRegistration starts a registration ceremony.
-func (s *PasskeyService) BeginRegistration(ctx context.Context, email, tenantNS string) (*protocol.CredentialCreation, string, error) {
+func (s *PasskeyService) BeginRegistration(ctx context.Context, email, tenantID string) (*protocol.CredentialCreation, string, error) {
 	if s.wa == nil {
 		return nil, "", fmt.Errorf("webauthn not initialised")
 	}
-	user, err := s.FindOrCreateUser(ctx, email, tenantNS)
+	user, err := s.FindOrCreatePasskeyUser(ctx, email, tenantID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -173,9 +169,9 @@ func (s *PasskeyService) BeginRegistration(ctx context.Context, email, tenantNS 
 	challenge := session.Challenge
 	s.storeSession(challenge, &CeremonySession{
 		Challenge: challenge,
-		UserID:    string(user.Handle),
+		UserID:    user.UserID,
 		UserEmail: email,
-		TenantNS:  tenantNS,
+		TenantID:  tenantID,
 		WASession: session,
 	})
 	return options, challenge, nil
@@ -190,9 +186,9 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 	if err != nil {
 		return nil, nil, err
 	}
-	user, err := s.GetUser(ctx, cs.UserEmail, cs.TenantNS)
+	user, err := s.GetUser(ctx, cs.UserEmail)
 	if err != nil {
-		user, err = s.FindOrCreateUser(ctx, cs.UserEmail, cs.TenantNS)
+		user, err = s.FindOrCreatePasskeyUser(ctx, cs.UserEmail, cs.TenantID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -201,7 +197,7 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 	if err != nil {
 		return nil, nil, fmt.Errorf("create credential: %w", err)
 	}
-	if err := s.SaveCredential(ctx, cs.UserEmail, cs.TenantNS, cred); err != nil {
+	if err := s.SaveCredential(ctx, user.UserID, cred); err != nil {
 		return nil, nil, err
 	}
 	user.Credentials = append(user.Credentials, *cred)
@@ -209,9 +205,7 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 }
 
 // BeginLoginDiscoverable starts a login ceremony without specifying a user.
-// Used for conditional mediation / discoverable credentials (email-less login).
-// Browser shows all available passkeys for this RP.
-func (s *PasskeyService) BeginLoginDiscoverable(ctx context.Context, tenantNS string) (*protocol.CredentialAssertion, string, error) {
+func (s *PasskeyService) BeginLoginDiscoverable(ctx context.Context, tenantID string) (*protocol.CredentialAssertion, string, error) {
 	if s.wa == nil {
 		return nil, "", fmt.Errorf("webauthn not initialised")
 	}
@@ -222,20 +216,20 @@ func (s *PasskeyService) BeginLoginDiscoverable(ctx context.Context, tenantNS st
 	challenge := session.Challenge
 	s.storeSession(challenge, &CeremonySession{
 		Challenge: challenge,
-		UserID:    "", // no user yet — resolved from assertion.userHandle in FinishLogin
+		UserID:    "",
 		UserEmail: "",
-		TenantNS:  tenantNS,
+		TenantID:  tenantID,
 		WASession: session,
 	})
 	return options, challenge, nil
 }
 
 // BeginLogin starts an assertion ceremony.
-func (s *PasskeyService) BeginLogin(ctx context.Context, email, tenantNS string) (*protocol.CredentialAssertion, string, error) {
+func (s *PasskeyService) BeginLogin(ctx context.Context, email, tenantID string) (*protocol.CredentialAssertion, string, error) {
 	if s.wa == nil {
 		return nil, "", fmt.Errorf("webauthn not initialised")
 	}
-	user, err := s.GetUser(ctx, email, tenantNS)
+	user, err := s.GetUser(ctx, email)
 	if err != nil {
 		return nil, "", err
 	}
@@ -246,9 +240,9 @@ func (s *PasskeyService) BeginLogin(ctx context.Context, email, tenantNS string)
 	challenge := session.Challenge
 	s.storeSession(challenge, &CeremonySession{
 		Challenge: challenge,
-		UserID:    string(user.Handle),
+		UserID:    user.UserID,
 		UserEmail: email,
-		TenantNS:  tenantNS,
+		TenantID:  tenantID,
 		WASession: session,
 	})
 	return options, challenge, nil
@@ -267,7 +261,7 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, challenge string, pars
 	var user *PasskeyUser
 	if cs.UserEmail != "" {
 		// Known-user login (email was provided at BeginLogin).
-		user, err = s.GetUser(ctx, cs.UserEmail, cs.TenantNS)
+		user, err = s.GetUser(ctx, cs.UserEmail)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -276,21 +270,27 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, challenge string, pars
 			return nil, nil, fmt.Errorf("validate login: %w", err)
 		}
 		if cred != nil {
-			_ = s.UpdateCredentialSignCount(ctx, user.Email, user.TenantNS, cred.ID, int(cred.Authenticator.SignCount))
+			_ = s.UpdateCredentialSignCount(ctx, user.UserID, cred.ID, cred.Authenticator.SignCount)
 		}
 		return user, cred, nil
 	}
 
 	// Discoverable login — resolve user from assertion.rawID (credential kid).
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
-		// Try by credential ID first (kid indexed, reliable).
-		u, findErr := s.creds.FindByCredentialID(ctx, cs.TenantNS, rawID)
-		if findErr == nil && u != nil {
-			user = u
-			return u, nil
+		cred, findErr := s.creds.FindCredentialByKID(ctx, rawID)
+		if findErr == nil && cred != nil {
+			pu := &PasskeyUser{
+				UserID:   cred.UserID,
+				TenantID: cs.TenantID,
+			}
+			// Load all credentials for this user
+			allCreds, _ := s.creds.FindCredentialsByUserID(ctx, cred.UserID)
+			pu.Credentials = webauthnCredsFromDomain(allCreds)
+			user = pu
+			return pu, nil
 		}
-		// Fallback: try by handle (may fail due to bytes comparison).
-		u, findErr = s.FindUserByHandle(ctx, userHandle)
+		// Fallback: try by handle
+		u, findErr := s.FindUserByHandle(ctx, userHandle)
 		if findErr != nil {
 			return nil, findErr
 		}
@@ -305,7 +305,7 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, challenge string, pars
 		return nil, nil, fmt.Errorf("user not resolved from discoverable login")
 	}
 	if cred != nil {
-		_ = s.UpdateCredentialSignCount(ctx, user.Email, user.TenantNS, cred.ID, int(cred.Authenticator.SignCount))
+		_ = s.UpdateCredentialSignCount(ctx, user.UserID, cred.ID, cred.Authenticator.SignCount)
 	}
 	return user, cred, nil
 }
@@ -327,17 +327,36 @@ func (s *PasskeyService) takeSession(challenge string) (*CeremonySession, error)
 	return data, nil
 }
 
-// StoreCeremony / GetCeremony for thin HTTP adapters during migration.
-func (s *PasskeyService) StoreCeremony(challenge string, data *CeremonySession) {
-	s.storeSession(challenge, data)
-}
-
-// GetCeremony returns and consumes a ceremony session.
-func (s *PasskeyService) GetCeremony(challenge string) (*CeremonySession, error) {
-	return s.takeSession(challenge)
-}
-
 // Logf is consistent passkey logging.
 func Logf(format string, args ...any) {
 	log.Printf("[passkey] "+format, args...)
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────
+
+func webauthnCredsFromDomain(creds []*PasskeyCredential) []webauthn.Credential {
+	var out []webauthn.Credential
+	for _, c := range creds {
+		out = append(out, webauthn.Credential{
+			ID:        c.CredentialID,
+			PublicKey: c.PublicKey,
+			Authenticator: webauthn.Authenticator{
+				SignCount: c.SignCount,
+				AAGUID:    []byte(c.AAGUID),
+			},
+			Flags: webauthn.CredentialFlags{
+				BackupEligible: c.BackupEligible,
+				BackupState:    c.BackupState,
+			},
+		})
+	}
+	return out
+}
+
+func transportStrings(transports []protocol.AuthenticatorTransport) []string {
+	var out []string
+	for _, t := range transports {
+		out = append(out, string(t))
+	}
+	return out
 }

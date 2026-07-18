@@ -2,33 +2,38 @@ package identity
 
 import (
 	"context"
-	"time"
-
-	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 // UserStore persists users. Implemented by adapters/persistence/surrealdb.
-// Returns domain *User — adapters own DTO mapping (never leak adapter DTO to handlers).
 type UserStore interface {
-	FindByActorID(ctx context.Context, ns, actorID string) (*User, error)
-	FindByEmailHash(ctx context.Context, ns, emailHash string) (*User, error)
-	// CreateMinimalUser inserts progressive-profiling row; returns actorID.
-	CreateMinimalUser(ctx context.Context, ns, emailHash string) (string, error)
+	Create(ctx context.Context, user *User) error
+	FindByUserID(ctx context.Context, userID string) (*User, error)
+	FindByEmailHash(ctx context.Context, emailHash string) (*User, error)
+	Update(ctx context.Context, user *User) error
+	Erase(ctx context.Context, userID string) error // crypto-shredding
+}
+
+// TenantStore resolves tenants. Implemented by adapters/persistence/surrealdb.
+type TenantStore interface {
+	GetByTenantID(ctx context.Context, tenantID string) (*Tenant, error)
+	ResolveByDomain(ctx context.Context, domain string) (*Tenant, error)
 }
 
 // SessionStore manages refresh-token sessions.
 type SessionStore interface {
-	SaveRefreshToken(ctx context.Context, ns, actorID, tokenHash string, expires time.Time) error
-	RevokeAllSessions(ctx context.Context, ns, actorID string) error
-	FindSessionByHash(ctx context.Context, ns, tokenHash string) (*Session, error)
+	Create(ctx context.Context, session *Session) error
+	FindByTokenHash(ctx context.Context, tokenHash string) (*Session, error)
+	RevokeByUserID(ctx context.Context, userID string) error
+	RevokeByTokenHash(ctx context.Context, tokenHash string) error
+	CleanupExpired(ctx context.Context) error
 }
 
 // CredentialStore persists WebAuthn credentials and passkey_users.
 type CredentialStore interface {
-	SaveCredential(ctx context.Context, ns, actorID string, cred *webauthn.Credential) error
-	FindByHandle(ctx context.Context, ns string, handle []byte) (*PasskeyUser, error)
-	FindByCredentialID(ctx context.Context, ns string, credentialID []byte) (*PasskeyUser, error)
-	UpsertPasskeyUser(ctx context.Context, ns, actorID, email string, handle []byte) error
-	FindPasskeyUserByActor(ctx context.Context, ns, actorID string) (*PasskeyUser, error)
-	UpdateSignCount(ctx context.Context, ns, actorID string, kid []byte, newCount int) error
+	SaveUser(ctx context.Context, userID string, handle []byte, tenantID string) error
+	SaveCredential(ctx context.Context, cred *PasskeyCredential) error
+	FindCredentialsByUserID(ctx context.Context, userID string) ([]*PasskeyCredential, error)
+	FindCredentialByKID(ctx context.Context, kid []byte) (*PasskeyCredential, error)
+	FindUserByHandle(ctx context.Context, handle []byte) (*PasskeyUser, error)
+	UpdateSignCount(ctx context.Context, userID string, kid []byte, newCount uint32) error
 }

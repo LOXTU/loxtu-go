@@ -1,19 +1,40 @@
 // Package config loads process configuration from the environment for the composition root.
 // Adapters receive pure Config structs — they never read ENV themselves.
+// Config does NOT import adapters — structs are defined here, adapters accept them.
 package config
 
 import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/loxtu/loxtu-go/internal/adapters/messaging/smtp"
-	"github.com/loxtu/loxtu-go/internal/adapters/persistence/surrealdb"
 )
 
-// SurrealDBFromEnv builds surrealdb.Config from SURREALDB_* variables.
-func SurrealDBFromEnv() surrealdb.Config {
-	return surrealdb.Config{
+// SurrealDBConfig holds SurrealDB connection settings.
+type SurrealDBConfig struct {
+	Endpoint  string
+	Username  string
+	Password  string
+	Namespace string
+	Database  string
+	MaxConns  int
+}
+
+// SMTPConfig holds SMTP connection settings.
+type SMTPConfig struct {
+	Host          string
+	Port          int
+	User          string
+	Password      string
+	FromAddr      string
+	FromName      string
+	Enabled       bool
+	Timeout       time.Duration
+	TLSServerName string
+}
+
+// SurrealDBFromEnv builds SurrealDBConfig from SURREALDB_* variables.
+func SurrealDBFromEnv() SurrealDBConfig {
+	return SurrealDBConfig{
 		Endpoint:  envOr("SURREALDB_ENDPOINT", "ws://surrealdb:8881/rpc"),
 		Username:  envOr("SURREALDB_USER", "root"),
 		Password:  envOr("SURREALDB_PASS", "root"),
@@ -23,9 +44,9 @@ func SurrealDBFromEnv() surrealdb.Config {
 	}
 }
 
-// SMTPFromEnv builds smtp.Config from SMTP_* variables.
-func SMTPFromEnv() smtp.Config {
-	return smtp.Config{
+// SMTPFromEnv builds SMTPConfig from SMTP_* variables.
+func SMTPFromEnv() SMTPConfig {
+	return SMTPConfig{
 		Host:          envOr("SMTP_HOST", "stalwart"),
 		Port:          envInt("SMTP_PORT", 465),
 		User:          envOr("SMTP_USER", "noreply@loxtu.com"),

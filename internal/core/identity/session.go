@@ -17,13 +17,12 @@ const (
 )
 
 // AccessClaims carries full user identity in the access JWT payload.
-// Same fields as legacy features/auth AccessClaims.
 type AccessClaims struct {
 	jwt.RegisteredClaims
-	Email      string `json:"email"`
-	TenantNS   string `json:"tenant_ns"`
-	EmployeeID string `json:"employee_id"`
-	Role       string `json:"role"`
+	UserID      string   `json:"user_id"`
+	TenantID    string   `json:"tenant_id"`
+	Role        string   `json:"role,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // TokenPair is the pure issuance result — persistence is the caller's (adapter) job.
@@ -34,14 +33,12 @@ type TokenPair struct {
 	ExpiresAt    time.Time // refresh expiry hint for SessionStore
 }
 
-// Session is a refresh-token session row (maps to SurrealDB sessions).
+// Session is a refresh-token session row (maps to sessions table).
 type Session struct {
-	ActorID   string
+	UserID    string // UUID v7
 	TokenHash string
 	ExpiresAt time.Time
 	CreatedAt time.Time
-	// Email may be populated by adapters when joining users (rotation path).
-	Email string
 }
 
 // signingKey returns HS256 secret; panics if LOXTU_JWT_SECRET unset (fail-fast).
@@ -54,19 +51,19 @@ func signingKey() []byte {
 }
 
 // IssueAccessToken creates a short-lived HS256 JWT for the given identity.
-func IssueAccessToken(email, tenantNS, employeeID, role string) (string, error) {
+func IssueAccessToken(userID, tenantID, role string, permissions []string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "loxtu",
-			Subject:   email,
+			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(AccessTokenTTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		Email:      email,
-		TenantNS:   tenantNS,
-		EmployeeID: employeeID,
-		Role:       role,
+		UserID:      userID,
+		TenantID:    tenantID,
+		Role:        role,
+		Permissions: permissions,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(signingKey())
@@ -109,9 +106,9 @@ func HashToken(s string) string {
 }
 
 // IssueTokens creates access + refresh tokens.
-// Does NOT write to DB — returns RefreshHash for SessionStore.SaveRefreshToken.
-func IssueTokens(email, tenantNS, employeeID, role string) (pair TokenPair, err error) {
-	access, err := IssueAccessToken(email, tenantNS, employeeID, role)
+// Does NOT write to DB — returns RefreshHash for SessionStore.
+func IssueTokens(userID, tenantID, role string, permissions []string, accessTTL time.Duration) (pair TokenPair, err error) {
+	access, err := IssueAccessToken(userID, tenantID, role, permissions, accessTTL)
 	if err != nil {
 		return TokenPair{}, fmt.Errorf("access token: %w", err)
 	}
