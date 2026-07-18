@@ -35,5 +35,6 @@ type CredentialStore interface {
 	FindCredentialsByUserID(ctx context.Context, userID string) ([]*PasskeyCredential, error)
 	FindCredentialByKID(ctx context.Context, kid []byte) (*PasskeyCredential, error)
 	FindUserByHandle(ctx context.Context, handle []byte) (*PasskeyUser, error)
+	FindHandleByUserID(ctx context.Context, userID string) ([]byte, error)
 	UpdateSignCount(ctx context.Context, userID string, kid []byte, newCount uint32) error
 }

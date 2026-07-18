@@ -211,7 +211,7 @@ func TestNewWebAuthn(t *testing.T) {
 }
 
 func TestPasskeyService_BeginRegistration_NilWA(t *testing.T) {
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil, "test-pepper")
 	_, _, err := svc.BeginRegistration(context.Background(), "x@y.com", "loxtu")
 	if err == nil || err.Error() != "webauthn not initialised" {
 		t.Errorf("unexpected error: %v", err)
@@ -219,7 +219,7 @@ func TestPasskeyService_BeginRegistration_NilWA(t *testing.T) {
 }
 
 func TestPasskeyService_BeginLogin_NilWA(t *testing.T) {
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil, "test-pepper")
 	_, _, err := svc.BeginLogin(context.Background(), "x@y.com", "loxtu")
 	if err == nil || err.Error() != "webauthn not initialised" {
 		t.Errorf("unexpected error: %v", err)
@@ -227,7 +227,7 @@ func TestPasskeyService_BeginLogin_NilWA(t *testing.T) {
 }
 
 func TestPasskeyService_BeginLoginDiscoverable_NilWA(t *testing.T) {
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil, "test-pepper")
 	_, _, err := svc.BeginLoginDiscoverable(context.Background(), "loxtu")
 	if err == nil || err.Error() != "webauthn not initialised" {
 		t.Errorf("unexpected error: %v", err)
@@ -235,7 +235,7 @@ func TestPasskeyService_BeginLoginDiscoverable_NilWA(t *testing.T) {
 }
 
 func TestPasskeyService_FinishRegistration_NilWA(t *testing.T) {
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil, "test-pepper")
 	_, _, err := svc.FinishRegistration(context.Background(), "x", nil)
 	if err == nil || err.Error() != "webauthn not initialised" {
 		t.Errorf("unexpected error: %v", err)
@@ -243,7 +243,7 @@ func TestPasskeyService_FinishRegistration_NilWA(t *testing.T) {
 }
 
 func TestPasskeyService_FinishLogin_NilWA(t *testing.T) {
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil, "test-pepper")
 	_, _, err := svc.FinishLogin(context.Background(), "x", nil)
 	if err == nil || err.Error() != "webauthn not initialised" {
 		t.Errorf("unexpected error: %v", err)
@@ -252,7 +252,7 @@ func TestPasskeyService_FinishLogin_NilWA(t *testing.T) {
 
 func TestPasskeyService_FinishRegistration_NoSession(t *testing.T) {
 	wa, _ := identity.NewWebAuthn("localhost", "http://localhost")
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa, "test-pepper")
 	_, _, err := svc.FinishRegistration(context.Background(), "nonexistent-challenge", nil)
 	if err == nil || err.Error() != "session not found" {
 		t.Errorf("unexpected error: %v", err)
@@ -261,7 +261,7 @@ func TestPasskeyService_FinishRegistration_NoSession(t *testing.T) {
 
 func TestPasskeyService_FinishLogin_NoSession(t *testing.T) {
 	wa, _ := identity.NewWebAuthn("localhost", "http://localhost")
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa, "test-pepper")
 	_, _, err := svc.FinishLogin(context.Background(), "nonexistent", nil)
 	if err == nil || err.Error() != "session not found" {
 		t.Errorf("unexpected error: %v", err)
@@ -270,7 +270,7 @@ func TestPasskeyService_FinishLogin_NoSession(t *testing.T) {
 
 func TestPasskeyService_ResolveUserID_NilWA(t *testing.T) {
 	users := newMockUserStore()
-	svc := identity.NewPasskeyService(users, newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(users, newMockCredStore(), nil, "test-pepper")
 	_, err := svc.ResolveUserID(context.Background(), "x@y.com")
 	if err == nil {
 		t.Error("expected error for nonexistent user")
@@ -279,8 +279,8 @@ func TestPasskeyService_ResolveUserID_NilWA(t *testing.T) {
 
 func TestPasskeyService_GetUser_NoCredentials(t *testing.T) {
 	users := newMockUserStore()
-	users.Create(context.Background(), &identity.User{UserID: "u1", EmailHash: identity.EmailHash("x@y.com")})
-	svc := identity.NewPasskeyService(users, newMockCredStore(), nil)
+	users.Create(context.Background(), &identity.User{UserID: "u1", EmailHash: identity.EmailHashWithPepper("x@y.com", "test-pepper")})
+	svc := identity.NewPasskeyService(users, newMockCredStore(), nil, "test-pepper")
 	_, err := svc.GetUser(context.Background(), "x@y.com")
 	if err == nil {
 		t.Error("expected error when user has no credentials")
@@ -417,7 +417,7 @@ func TestNewSessionAuthService(t *testing.T) {
 func TestPasskeyService_FindUserByHandle(t *testing.T) {
 	creds := newMockCredStore()
 	creds.usersByHandle["loxtu:abc"] = &identity.PasskeyUser{UserID: "u1", TenantID: "loxtu"}
-	svc := identity.NewPasskeyService(newMockUserStore(), creds, nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), creds, nil, "test-pepper")
 	u, err := svc.FindUserByHandle(context.Background(), []byte("loxtu:abc"))
 	if err != nil || u.UserID != "u1" {
 		t.Errorf("got %v err %v", u, err)
@@ -425,7 +425,7 @@ func TestPasskeyService_FindUserByHandle(t *testing.T) {
 }
 
 func TestPasskeyService_FindUserByHandle_NotFound(t *testing.T) {
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), nil, "test-pepper")
 	_, err := svc.FindUserByHandle(context.Background(), []byte("x"))
 	if err == nil {
 		t.Error("expected error")
@@ -453,10 +453,10 @@ func TestPasskeyService_BeginRegistration_WithWA(t *testing.T) {
 	wa, _ := identity.NewWebAuthn("localhost", "http://localhost")
 	users := newMockUserStore()
 	users.Create(context.Background(), &identity.User{
-		UserID: "u1", EmailHash: identity.EmailHash("x@y.com"), TenantID: "loxtu",
+		UserID: "u1", EmailHash: identity.EmailHashWithPepper("x@y.com", "test-pepper"), TenantID: "loxtu",
 	})
 	creds := newMockCredStore()
-	svc := identity.NewPasskeyService(users, creds, wa)
+	svc := identity.NewPasskeyService(users, creds, wa, "test-pepper")
 
 	options, challenge, err := svc.BeginRegistration(context.Background(), "x@y.com", "loxtu")
 	if err != nil {
@@ -474,14 +474,14 @@ func TestPasskeyService_BeginLogin_WithWA(t *testing.T) {
 	wa, _ := identity.NewWebAuthn("localhost", "http://localhost")
 	users := newMockUserStore()
 	users.Create(context.Background(), &identity.User{
-		UserID: "u1", EmailHash: identity.EmailHash("x@y.com"), TenantID: "loxtu",
+		UserID: "u1", EmailHash: identity.EmailHashWithPepper("x@y.com", "test-pepper"), TenantID: "loxtu",
 	})
 	creds := newMockCredStore()
 	// Need credentials for BeginLogin to work
 	creds.credsByUser["u1"] = []*identity.PasskeyCredential{
 		{CredentialID: []byte("kid1"), UserID: "u1", PublicKey: []byte("pk1")},
 	}
-	svc := identity.NewPasskeyService(users, creds, wa)
+	svc := identity.NewPasskeyService(users, creds, wa, "test-pepper")
 
 	options, challenge, err := svc.BeginLogin(context.Background(), "x@y.com", "loxtu")
 	if err != nil {
@@ -497,7 +497,7 @@ func TestPasskeyService_BeginLogin_WithWA(t *testing.T) {
 
 func TestPasskeyService_BeginLogin_UserNotFound(t *testing.T) {
 	wa, _ := identity.NewWebAuthn("localhost", "http://localhost")
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa, "test-pepper")
 	_, _, err := svc.BeginLogin(context.Background(), "nobody@x.com", "loxtu")
 	if err == nil {
 		t.Error("expected error")
@@ -506,7 +506,7 @@ func TestPasskeyService_BeginLogin_UserNotFound(t *testing.T) {
 
 func TestPasskeyService_BeginLoginDiscoverable_WithWA(t *testing.T) {
 	wa, _ := identity.NewWebAuthn("localhost", "http://localhost")
-	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa)
+	svc := identity.NewPasskeyService(newMockUserStore(), newMockCredStore(), wa, "test-pepper")
 	options, challenge, err := svc.BeginLoginDiscoverable(context.Background(), "loxtu")
 	if err != nil {
 		t.Fatalf("BeginLoginDiscoverable: %v", err)
@@ -518,7 +518,7 @@ func TestPasskeyService_BeginLoginDiscoverable_WithWA(t *testing.T) {
 
 func TestPasskeyService_UpdateCredentialSignCount(t *testing.T) {
 	creds := newMockCredStore()
-	svc := identity.NewPasskeyService(newMockUserStore(), creds, nil)
+	svc := identity.NewPasskeyService(newMockUserStore(), creds, nil, "test-pepper")
 	if err := svc.UpdateCredentialSignCount(context.Background(), "u1", []byte("kid1"), 5); err != nil {
 		t.Errorf("unexpected: %v", err)
 	}
@@ -533,9 +533,9 @@ func TestWebauthnCredsFromDomain(t *testing.T) {
 	}
 	users := newMockUserStore()
 	users.Create(context.Background(), &identity.User{
-		UserID: "u1", EmailHash: identity.EmailHash("x@y.com"),
+		UserID: "u1", EmailHash: identity.EmailHashWithPepper("x@y.com", "test-pepper"),
 	})
-	svc := identity.NewPasskeyService(users, creds, nil)
+	svc := identity.NewPasskeyService(users, creds, nil, "test-pepper")
 	user, err := svc.GetUser(context.Background(), "x@y.com")
 	if err != nil {
 		t.Fatalf("GetUser: %v", err)

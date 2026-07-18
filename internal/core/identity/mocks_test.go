@@ -71,6 +71,12 @@ func (m *mockCredStore) FindCredentialByKID(_ context.Context, kid []byte) (*ide
 func (m *mockCredStore) FindUserByHandle(_ context.Context, handle []byte) (*identity.PasskeyUser, error) {
 	return m.usersByHandle[string(handle)], nil
 }
+func (m *mockCredStore) FindHandleByUserID(_ context.Context, userID string) ([]byte, error) {
+	if u, ok := m.usersByHandle[userID]; ok {
+		return u.Handle, nil
+	}
+	return nil, nil
+}
 func (m *mockCredStore) UpdateSignCount(_ context.Context, _ string, _ []byte, _ uint32) error {
 	return nil
 }

@@ -16,82 +16,67 @@
   // ── Guard: prevent concurrent registration ──
   var registrationInProgress = false;
 
-  // ── Conditional Mediation (passkey autofill) ──
+  // ── Delegated click handlers ──
+  document.addEventListener('click', function (e) {
+    var regBtn = e.target.closest('.js-register-passkey');
+    if (regBtn) {
+      e.preventDefault();
+      var email = regBtn.getAttribute('data-email');
+      if (email) registerPasskey(email);
+      return;
+    }
+    var skipBtn = e.target.closest('.js-skip-passkey');
+    if (skipBtn) {
+      e.preventDefault();
+      var email = skipBtn.getAttribute('data-email');
+      if (email) skipPasskey(email);
+      return;
+    }
+    var signinBtn = e.target.closest('.js-signin-passkey');
+    if (signinBtn) {
+      e.preventDefault();
+      if (conditionalAbortController) {
+        conditionalAbortController.abort();
+        conditionalAbortController = null;
+      }
+      var emailInput = document.querySelector('input[name="email"]');
+      var email = emailInput ? emailInput.value.trim() : '';
+      signInWithPasskey(email);
+    }
+  });
 
-  // Run on page load: if the login page has autocomplete="username webauthn",
-  // fetch discoverable credential options and set up conditional mediation.
+  // ── Conditional mediation — only on login page with email input ──
   var emailInput = document.querySelector('input[autocomplete="username webauthn"]');
   if (emailInput) {
-    checkPasskeyAvailability();
-  }
-
-  async function checkPasskeyAvailability() {
-    // Check if the browser supports passkeys at all
-    if (!window.PublicKeyCredential || !PublicKeyCredential.isConditionalMediationAvailable) {
-      console.log('[passkey] Not supported');
-      return;
-    }
-
-    try {
-      var available = await PublicKeyCredential.isConditionalMediationAvailable();
-      if (!available) {
-        console.log('[passkey] Conditional mediation not available');
-        return;
-      }
-    } catch (err) {
-      console.log('[passkey] Conditional mediation check failed:', err);
-      return;
-    }
-
-    // Conditional mediation IS available → show the passkey icon button
-    var pkBtn = document.getElementById('passkey-signin-btn');
-    if (pkBtn) {
-      pkBtn.style.display = 'flex';
-    }
-
-    // Start conditional mediation (autofill in email field)
     setupConditionalMediation();
   }
 
   async function setupConditionalMediation() {
-    // Check if the browser supports conditional mediation
     if (!window.PublicKeyCredential || !PublicKeyCredential.isConditionalMediationAvailable) {
-      console.log('[passkey] Conditional mediation not supported');
       return;
     }
-
     try {
       var available = await PublicKeyCredential.isConditionalMediationAvailable();
-      if (!available) {
-        console.log('[passkey] Conditional mediation not available');
-        return;
-      }
+      if (!available) return;
     } catch (err) {
-      console.log('[passkey] Conditional mediation check failed:', err);
       return;
     }
 
+    // Show passkey button
+    var pkBtn = document.getElementById('passkey-signin-btn');
+    if (pkBtn) pkBtn.style.display = 'flex';
+
     try {
-      // Create abort controller so explicit sign-in can cancel this
       conditionalAbortController = new AbortController();
 
-      // Step 1: get discoverable credential options from the server
+      // Get discoverable credential options
       var resp = await fetch('/auth/passkey/login/begin');
-      if (!resp.ok) {
-        console.warn('[passkey] Failed to get login options:', await resp.json());
-        return;
-      }
+      if (!resp.ok) return;
 
       var options = await resp.json();
-      console.log('[passkey] Received login options, mediation:', options.mediation);
+      if (!options || !options.publicKey) return;
 
-      // Guard: backend returns {status:'no-email'} when no email was sent.
-      if (!options || !options.publicKey) {
-        console.log('[passkey] Conditional mediation: no credentials found, exiting gracefully.');
-        return;
-      }
-
-      // Convert challenge and allowCredentials from base64url
+      // Convert base64url fields
       options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
       if (options.publicKey.allowCredentials) {
         options.publicKey.allowCredentials.forEach(function (cred) {
@@ -99,23 +84,16 @@
         });
       }
 
-      // Step 2: call get() with conditional mediation — browser shows a
-      // non-modal dialog with available passkeys. The promise resolves
-      // only when the user selects a credential.
+      // Conditional mediation — browser shows passkey autofill
       var assertion = await navigator.credentials.get({
         publicKey: options.publicKey,
         mediation: 'conditional',
         signal: conditionalAbortController.signal,
       });
 
-      if (!assertion) {
-        console.log('[passkey] No credential selected');
-        return;
-      }
+      if (!assertion) return;
 
-      console.log('[passkey] User selected a passkey');
-
-      // Step 3: encode and send to finish endpoint
+      // Send to finish
       var encoded = encodeAssertion(assertion);
       var finishResp = await fetch('/auth/passkey/login/finish', {
         method: 'POST',
@@ -123,53 +101,15 @@
         body: JSON.stringify(encoded),
       });
 
-      if (!finishResp.ok) {
-        var err = await finishResp.json();
-        console.error('[passkey] Login failed:', err);
-        return;
-      }
+      if (!finishResp.ok) return;
 
-      console.log('[passkey] Login successful, redirecting...');
       var data = await finishResp.json();
       window.location.href = data.redirect || '/dashboard';
-
     } catch (err) {
-      // Ignore abort errors from explicit sign-in
-      if (err.name === 'AbortError') {
-        console.log('[passkey] Conditional mediation aborted for explicit sign-in');
-        return;
-      }
+      if (err.name === 'AbortError') return; // Expected when user starts explicit sign-in
       console.error('[passkey] Conditional mediation error:', err);
     }
   }
-
-  // ── Delegated click handlers ──
-  document.addEventListener('click', function (e) {
-    var regBtn = e.target.closest('.js-register-passkey');
-    if (regBtn) {
-      var email = regBtn.getAttribute('data-email');
-      if (email) registerPasskey(email);
-      return;
-    }
-    var skipBtn = e.target.closest('.js-skip-passkey');
-    if (skipBtn) {
-      var email = skipBtn.getAttribute('data-email');
-      if (email) skipPasskey(email);
-      return;
-    }
-    var signinBtn = e.target.closest('.js-signin-passkey');
-    if (signinBtn) {
-      // Abort conditional mediation before starting explicit sign-in
-      if (conditionalAbortController) {
-        conditionalAbortController.abort();
-        conditionalAbortController = null;
-      }
-      // Read email from the input field if available.
-      var emailInput = document.querySelector('input[name="email"]');
-      var email = emailInput ? emailInput.value.trim() : '';
-      signInWithPasskey(email);
-    }
-  });
 
   async function signInWithPasskey(email) {
     console.log('[passkey] Explicit sign-in requested');
@@ -180,7 +120,6 @@
       if (!resp.ok) { console.error('[passkey] Failed to get login options'); return; }
       var options = await resp.json();
       if (!options || !options.publicKey) {
-        console.warn('[passkey] No passkey credentials available for this account.');
         alert('No passkey found on this device. Please sign in with OTP instead.');
         return;
       }
@@ -210,13 +149,12 @@
 
   async function registerPasskey(email) {
     if (registrationInProgress) {
-      console.warn('[passkey] Registration already in progress, ignoring duplicate call.');
+      console.warn('[passkey] Registration already in progress, ignoring.');
       return;
     }
     registrationInProgress = true;
 
-    // CRITICAL: abort any pending conditional mediation before creating credential.
-    // navigator.credentials.get() and navigator.credentials.create() cannot coexist.
+    // Abort conditional mediation before creating credential
     if (conditionalAbortController) {
       conditionalAbortController.abort();
       conditionalAbortController = null;
@@ -225,7 +163,7 @@
     console.log('[passkey] Starting registration for', email);
 
     try {
-      // Step 1: get registration options from the server
+      // Step 1: get registration options
       var body = new URLSearchParams({ email: email });
       var resp = await fetch('/auth/passkey/begin', {
         method: 'POST',
@@ -240,11 +178,8 @@
         return;
       }
 
-      // Step 2: convert server response to PublicKeyCredentialCreationOptions
+      // Step 2: convert options
       var options = await resp.json();
-      console.log('[passkey] Received creation options');
-
-      // Convert base64url-encoded fields to ArrayBuffer
       options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
       if (options.publicKey.user && options.publicKey.user.id) {
         options.publicKey.user.id = base64urlToArrayBuffer(options.publicKey.user.id);
@@ -255,14 +190,12 @@
         });
       }
 
-      // Step 3: call browser's WebAuthn API (Face ID / Touch ID prompt)
+      // Step 3: browser WebAuthn API (Face ID / Touch ID prompt)
       var credential = await navigator.credentials.create({ publicKey: options.publicKey });
-      console.log('[passkey] User granted permission, credential created');
+      console.log('[passkey] Credential created');
 
-      // Step 4: encode the credential response for the server
+      // Step 4: encode and send to finish
       var attestation = encodeAttestation(credential);
-
-      // Step 5: send to finish endpoint
       var finishResp = await fetch('/auth/passkey/finish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -277,13 +210,10 @@
       }
 
       console.log('[passkey] Registration complete, redirecting...');
-
-      // Read redirect from JSON body (Go handler returns {status, redirect}).
       var data = await finishResp.json();
       if (data.redirect) {
         window.location.href = data.redirect;
       }
-
     } catch (err) {
       console.error('[passkey] Error:', err);
       if (err.name === 'NotAllowedError') {
@@ -306,14 +236,22 @@
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body,
     });
-
     if (!resp.ok) {
       console.error('[passkey] Skip failed');
       return;
     }
-
-    var data = await resp.json();
-    window.location.href = data.redirect || '/dashboard';
+    var redirectUrl = '/dashboard';
+    // Skip returns HX-Redirect header or JSON
+    var hxRedirect = resp.headers.get('HX-Redirect');
+    if (hxRedirect) {
+      redirectUrl = hxRedirect;
+    } else {
+      try {
+        var data = await resp.json();
+        redirectUrl = data.redirect || '/dashboard';
+      } catch (e) {}
+    }
+    window.location.href = redirectUrl;
   }
 
   // ── Helpers ──

@@ -3,6 +3,7 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -34,6 +35,29 @@ func (r *CredRepo) SaveUser(ctx context.Context, userID string, handle []byte, t
 	return err
 }
 
+// FindHandleByUserID loads the existing handle for a user (avoids regenerating).
+func (r *CredRepo) FindHandleByUserID(ctx context.Context, userID string) ([]byte, error) {
+	if r.pool == nil {
+		return nil, fmt.Errorf("db not connected")
+	}
+	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"SELECT handle FROM passkey_users WHERE user_id = $uid LIMIT 1",
+		map[string]any{"uid": userID},
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows := firstRows(results)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	rm, ok := rows[0].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	return asBytes(rm["handle"]), nil
+}
+
 // SaveCredential upserts a passkey credential.
 func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCredential) error {
 	if r.pool == nil {
@@ -43,22 +67,22 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 		return fmt.Errorf("nil credential")
 	}
 	vars := map[string]any{
-		"uid":   cred.UserID,
-		"kid":   cred.CredentialID,
-		"pk":    cred.PublicKey,
-		"sc":    cred.SignCount,
-		"trans": cred.Transports,
+		"uid":    cred.UserID,
+		"kid":    cred.CredentialID,
+		"pk":     cred.PublicKey,
+		"sc":     cred.SignCount,
+		"trans":  cred.Transports,
 		"aaguid": cred.AAGUID,
-		"be":    cred.BackupEligible,
-		"bs":    cred.BackupState,
-		"ca":    cred.CreatedAt,
+		"be":     cred.BackupEligible,
+		"bs":     cred.BackupState,
+		"ca":     cred.CreatedAt.Format(time.RFC3339),
 	}
 	// Delete existing credential with same kid (if any)
 	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"DELETE passkey_credentials WHERE kid = $kid AND user_id = $uid", vars)
-	// Create new credential
+	// Create new credential — cast datetime from string
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs, created_at = $ca`,
+		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs, created_at = <datetime>$ca`,
 		vars,
 	)
 	return err
@@ -117,7 +141,7 @@ func (r *CredRepo) FindUserByHandle(ctx context.Context, handle []byte) (*identi
 		return nil, fmt.Errorf("db not connected")
 	}
 	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		"SELECT user_id, tenant_id, handle, email FROM passkey_users WHERE handle = $handle LIMIT 1",
+		"SELECT user_id, tenant_id, handle FROM passkey_users WHERE handle = $handle LIMIT 1",
 		map[string]any{"handle": handle},
 	)
 	if err != nil {
@@ -133,7 +157,6 @@ func (r *CredRepo) FindUserByHandle(ctx context.Context, handle []byte) (*identi
 	}
 	userID, _ := rm["user_id"].(string)
 	tenantID, _ := rm["tenant_id"].(string)
-	email, _ := rm["email"].(string)
 	h := asBytes(rm["handle"])
 	if len(h) == 0 {
 		h = handle
@@ -142,7 +165,6 @@ func (r *CredRepo) FindUserByHandle(ctx context.Context, handle []byte) (*identi
 	return &identity.PasskeyUser{
 		UserID:      userID,
 		TenantID:    tenantID,
-		Email:       email,
 		Handle:      h,
 		Credentials: webauthnCredsFromDomainV2(creds),
 	}, nil

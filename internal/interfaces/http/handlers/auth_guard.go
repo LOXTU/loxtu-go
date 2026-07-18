@@ -78,9 +78,6 @@ func Guard(next http.Handler) http.Handler {
 
 		if lc := mw.GetLogCtx(r.Context()); lc != nil {
 			lc.TenantID = claims.TenantID
-			if c, err := r.Cookie("loxtu_email"); err == nil && c.Value != "" {
-				lc.Email = mw.MaskEmail(c.Value)
-			}
 		}
 
 		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
@@ -110,11 +107,8 @@ func GetUserID(r *http.Request) string {
 	return v
 }
 
-// GetEmail returns email from loxtu_email cookie (set during auth).
+// GetEmail returns email from context (set by SetLogEmail or handler).
 func GetEmail(r *http.Request) string {
-	if c, err := r.Cookie("loxtu_email"); err == nil {
-		return c.Value
-	}
 	v, _ := r.Context().Value(ctxEmail).(string)
 	return v
 }

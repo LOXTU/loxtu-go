@@ -42,11 +42,6 @@ func (h *PasskeyHandler) Mount(r chi.Router) {
 func (h *PasskeyHandler) RegisterPage(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
 	if email == "" {
-		if c, err := r.Cookie("loxtu_email"); err == nil {
-			email = c.Value
-		}
-	}
-	if email == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -118,11 +113,6 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 	pair, err := h.tokens.IssueSession(r.Context(), user.UserID, tenantID, "worker", nil)
 	if err == nil {
 		setAuthCookies(w, pair)
-		http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: user.Email, Path: "/", MaxAge: 3600})
-		http.SetCookie(w, &http.Cookie{
-			Name: "loxtu_tenant", Value: tenantID,
-			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-		})
 		clearTempAuthCookies(w)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "redirect": "/dashboard"})
@@ -136,11 +126,6 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	mw.SetLogEmail(r, email)
 	if email == "" {
-		if c, err := r.Cookie("loxtu_email"); err == nil {
-			email = c.Value
-		}
-	}
-	if email == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -148,24 +133,17 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
 
 	// Find user to get userID
-	emailHash := security.HashEmail(email, "")
-	u, _ := h.passkey.ResolveUserID(r.Context(), email)
-	userID := u // ResolveUserID returns string
+	userID, _ := h.passkey.ResolveUserID(r.Context(), email)
 
 	pair, err := h.tokens.IssueSession(r.Context(), userID, tenantID, "worker", nil)
 	if err != nil {
 		slog.Error("skip IssueTokens failed", "err", err)
 	} else {
 		setAuthCookies(w, pair)
-		http.SetCookie(w, &http.Cookie{
-			Name: "loxtu_tenant", Value: tenantID,
-			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-		})
 	}
 	clearTempAuthCookies(w)
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)
-	_ = emailHash
 }
 
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {

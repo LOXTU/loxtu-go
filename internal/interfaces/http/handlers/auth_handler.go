@@ -144,16 +144,13 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		userID = newUser.UserID
 	}
 
-	// Set pre-auth cookies
+	// Set pre-auth cookies (minimal — just for OTP verify flow)
 	cookieVal := fmt.Sprintf(`{"email":"%s","tenant_id":"%s"}`, email, tenantID)
 	http.SetCookie(w, &http.Cookie{
 		Name: "pre_auth_state", Value: url.QueryEscape(cookieVal),
 		Path: "/", MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 	})
-	http.SetCookie(w, &http.Cookie{
-		Name: "loxtu_tenant", Value: tenantID,
-		Path: "/", MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
+	// NO loxtu_tenant cookie — tenant resolved from email domain on every request
 
 	h.logSecurity(r, audit.SecurityEvent{
 		UserID:      userID,
@@ -245,10 +242,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name: "loxtu_consent", Value: email, Path: "/",
-		MaxAge: 300, HttpOnly: true, SameSite: http.SameSiteLaxMode,
-	})
+	templ.Handler(authtmpl.ConsentPartial(email)).ServeHTTP(w, r)
 	h.logSecurity(r, audit.SecurityEvent{
 		UserID:      u.UserID,
 		TenantID:    tenantID,
@@ -258,16 +252,10 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		ClientIP:    mw.GetClientIP(r),
 		ReqID:       mw.GetRequestID(r.Context()),
 	})
-	templ.Handler(authtmpl.ConsentPartial(email)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) ConsentPage(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-	if email == "" {
-		if c, err := r.Cookie("loxtu_consent"); err == nil && c.Value != "" {
-			email = c.Value
-		}
-	}
 	if email == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -315,12 +303,7 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_consent", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: email, Path: "/", MaxAge: 3600})
-	http.SetCookie(w, &http.Cookie{
-		Name: "loxtu_tenant", Value: tenantID,
-		Path: "/", MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
+	// No extra cookies — email is in the template, tenant from email domain
 
 	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantID, email) {
 		slog.Info("passkey presence: true", "email", masked)
@@ -396,10 +379,6 @@ func (h *AuthHandler) issueCookies(w http.ResponseWriter, r *http.Request, userI
 	})
 	setAuthCookies(w, pair)
 	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(w, &http.Cookie{
-		Name: "loxtu_tenant", Value: tenantID,
-		Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
 	return nil
 }
 
@@ -424,13 +403,10 @@ func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_access", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_refresh", Value: "", Path: "/", MaxAge: -1})
 	clearTempAuthCookies(w)
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_tenant", Value: "", Path: "/", MaxAge: -1})
 }
 
 func clearTempAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_consent", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: "", Path: "/", MaxAge: -1})
 }
 
 // emailDomain extracts the domain part of an email address.

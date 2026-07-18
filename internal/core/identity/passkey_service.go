@@ -73,20 +73,22 @@ func (s *PasskeyService) ResolveUserID(ctx context.Context, email string) (strin
 }
 
 // FindOrCreatePasskeyUser resolves user then loads/creates passkey principal.
+// Reuses existing handle if user already has a passkey_users row (prevents handle mismatch on re-registration).
 func (s *PasskeyService) FindOrCreatePasskeyUser(ctx context.Context, email, tenantID string) (*PasskeyUser, error) {
 	userID, err := s.ResolveUserID(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
-	// Try to load existing passkey user by finding any credential for this user
-	creds, err := s.creds.FindCredentialsByUserID(ctx, userID)
-	if err == nil && len(creds) > 0 {
+	// Try to reuse existing handle from passkey_users table
+	existingHandle, _ := s.creds.FindHandleByUserID(ctx, userID)
+	if len(existingHandle) > 0 {
+		creds, _ := s.creds.FindCredentialsByUserID(ctx, userID)
 		return &PasskeyUser{
 			UserID:      userID,
 			TenantID:    tenantID,
 			Email:       email,
-			Handle:      nil, // will be loaded from passkey_users table
+			Handle:      existingHandle,
 			Credentials: webauthnCredsFromDomain(creds),
 		}, nil
 	}
@@ -191,12 +193,10 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 	if err != nil {
 		return nil, nil, err
 	}
-	user, err := s.GetUser(ctx, cs.UserEmail)
+	// Use session data directly — don't call GetUser (fails for new users with no credentials)
+	user, err := s.FindOrCreatePasskeyUser(ctx, cs.UserEmail, cs.TenantID)
 	if err != nil {
-		user, err = s.FindOrCreatePasskeyUser(ctx, cs.UserEmail, cs.TenantID)
-		if err != nil {
-			return nil, nil, err
-		}
+		return nil, nil, err
 	}
 	// Restore handle from session — must match WebAuthnID() for CreateCredential
 	user.Handle = cs.UserHandle
