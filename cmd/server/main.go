@@ -96,7 +96,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[main] WebAuthn init failed: %v", err)
 	}
-	passkeyService := identity.NewPasskeyService(users, creds, wa)
+	passkeyService := identity.NewPasskeyService(users, creds, wa, secCfg.HashPepper)
 
 	rateLimiter := ratelimit.NewMemoryRateLimiter()
 	passkeyPresence := handlers.PasskeyPresenceFunc(func(ctx context.Context, tenantID, email string) bool {

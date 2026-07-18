@@ -25,20 +25,22 @@ type CeremonySession struct {
 
 // PasskeyService orchestrates WebAuthn ceremonies using injected stores + RP.
 type PasskeyService struct {
-	users UserStore
-	creds CredentialStore
-	wa    *webauthn.WebAuthn
+	users  UserStore
+	creds  CredentialStore
+	wa     *webauthn.WebAuthn
+	pepper string // for email hashing (LOXTU_HASH_PEPPER)
 
 	mu       sync.Mutex
 	sessions map[string]*CeremonySession
 }
 
 // NewPasskeyService wires RP + ports. wa must be non-nil (composition root).
-func NewPasskeyService(users UserStore, creds CredentialStore, wa *webauthn.WebAuthn) *PasskeyService {
+func NewPasskeyService(users UserStore, creds CredentialStore, wa *webauthn.WebAuthn, pepper string) *PasskeyService {
 	return &PasskeyService{
 		users:    users,
 		creds:    creds,
 		wa:       wa,
+		pepper:   pepper,
 		sessions: make(map[string]*CeremonySession),
 	}
 }
@@ -58,7 +60,8 @@ func NewWebAuthn(rpid, origin string) (*webauthn.WebAuthn, error) {
 
 // ResolveUserID finds users.UserID by email hash via UserStore.
 func (s *PasskeyService) ResolveUserID(ctx context.Context, email string) (string, error) {
-	u, err := s.users.FindByEmailHash(ctx, EmailHash(email))
+	emailHash := EmailHashWithPepper(email, s.pepper)
+	u, err := s.users.FindByEmailHash(ctx, emailHash)
 	if err != nil {
 		return "", fmt.Errorf("lookup user: %w", err)
 	}

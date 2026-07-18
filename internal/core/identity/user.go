@@ -174,11 +174,16 @@ type PasskeyCredential struct {
 
 // ── Standalone helpers ──────────────────────────────────────────────────
 
-// EmailHash returns SHA-256(lowercase(email) + pepper).
-// Use security.HashEmail(pepper) for production; this is the no-pepper variant
-// for backward compatibility during migration.
+// EmailHash returns SHA-256(lowercase(email)) without pepper.
+// Deprecated: use EmailHashWithPepper for new code.
 func EmailHash(email string) string {
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return hex.EncodeToString(sum[:])
+}
+
+// EmailHashWithPepper returns SHA-256(lowercase(email) + pepper).
+func EmailHashWithPepper(email, pepper string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email)) + pepper))
 	return hex.EncodeToString(sum[:])
 }
 
