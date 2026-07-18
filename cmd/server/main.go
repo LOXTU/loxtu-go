@@ -15,6 +15,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/loxtu/loxtu-go/internal/adapters/messaging/smtp"
+	"github.com/loxtu/loxtu-go/internal/adapters/oauth"
 	"github.com/loxtu/loxtu-go/internal/adapters/persistence/surrealdb"
 	"github.com/loxtu/loxtu-go/internal/adapters/ratelimit"
 	"github.com/loxtu/loxtu-go/internal/config"
@@ -122,7 +123,34 @@ func main() {
 		secCfg.HashPepper,
 	)
 	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, auditR)
-	dashH := handlers.NewDashboardHandler()
+	dashH := handlers.NewDashboardHandlerWithTenant(tenantRepo)
+
+	// ── OAuth2 ────────────────────────────────────────────────────────────
+	oauthRepo := surrealdb.NewOAuthRepo(pool)
+	oauthSvc := identity.NewOAuthService(oauthRepo, users, secCfg.HashPepper)
+	// Register providers (only if client IDs are configured)
+	if gc := envOr("GOOGLE_CLIENT_ID", ""); gc != "" {
+		oauthSvc.RegisterProvider(oauth.NewGoogleProvider(oauth.ProviderConfig{
+			ClientID:     gc,
+			ClientSecret: envOr("GOOGLE_CLIENT_SECRET", ""),
+			RedirectURI:  envOr("GOOGLE_REDIRECT_URI", "https://app.loxtu.com/auth/oauth/google/callback"),
+		}))
+	}
+	if ec := envOr("ENTRA_CLIENT_ID", ""); ec != "" {
+		oauthSvc.RegisterProvider(oauth.NewEntraProvider(oauth.ProviderConfig{
+			ClientID:     ec,
+			ClientSecret: envOr("ENTRA_CLIENT_SECRET", ""),
+			RedirectURI:  envOr("ENTRA_REDIRECT_URI", "https://app.loxtu.com/auth/oauth/entra/callback"),
+		}))
+	}
+	if ac := envOr("APPLE_CLIENT_ID", ""); ac != "" {
+		oauthSvc.RegisterProvider(oauth.NewAppleProvider(oauth.ProviderConfig{
+			ClientID:     ac,
+			ClientSecret: envOr("APPLE_CLIENT_SECRET", ""),
+			RedirectURI:  envOr("APPLE_REDIRECT_URI", "https://app.loxtu.com/auth/oauth/apple/callback"),
+		}))
+	}
+	oauthH := handlers.NewOAuthHandler(oauthSvc, tokenService)
 
 	// ── Router ────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
@@ -161,6 +189,7 @@ func main() {
 		r.Use(imw.RateLimit(nil))
 		authH.Mount(r)
 		pkH.Mount(r)
+		oauthH.Mount(r)
 	})
 
 	// Protected dashboard
