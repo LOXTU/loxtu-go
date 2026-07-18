@@ -102,17 +102,11 @@ func (r *AuditRepo) writeSecurity(ev audit.SecurityEvent) {
 		tenantID = "loxtu" // fallback
 	}
 
-	// Resolve user_id — prefer v2 field, fallback to legacy actor_id
+	// Resolve user_id — prefer v2 field
 	userID := ev.UserID
-	if userID == "" {
-		userID = ev.ActorID
-	}
 
-	// Resolve masked_email — prefer v2 field, fallback to legacy
+	// Resolve masked_email — prefer v2 field
 	maskedEmail := ev.MaskedEmail
-	if maskedEmail == "" {
-		maskedEmail = ev.ActorEmailMasked
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

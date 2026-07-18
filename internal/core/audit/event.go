@@ -3,14 +3,9 @@ package audit
 
 // SecurityEvent is written to security_audit (NIS2/SOC2 trail).
 type SecurityEvent struct {
-	// v2 fields (preferred)
 	UserID      string `json:"user_id"`
 	TenantID    string `json:"tenant_id"`
 	MaskedEmail string `json:"masked_email"`
-
-	// Legacy fields (kept for backward compat during migration)
-	ActorID          string `json:"actor_id,omitempty"`
-	ActorEmailMasked string `json:"actor_email_masked,omitempty"`
 
 	Action       string `json:"action"`
 	ResourceType string `json:"resource_type"`
@@ -22,14 +17,15 @@ type SecurityEvent struct {
 
 // ConsentEvent is written to user_consents (GDPR).
 type ConsentEvent struct {
-	UserID           string `json:"user_id"`
-	TenantID         string `json:"tenant_id"`
-	MaskedEmail      string `json:"masked_email"`
-	PrivacyPolicy    string `json:"privacy_policy"`
-	TermsOfService   string `json:"terms_of_service"`
-	ConsentTypes     string `json:"consent_types"`
-	ClientIP         string `json:"client_ip"`
-	ReqID            string `json:"reqid"`
+	UserID      string `json:"user_id"`
+	TenantID    string `json:"tenant_id"`
+	MaskedEmail string `json:"masked_email"`
+
+	PrivacyPolicy  string `json:"privacy_policy"`
+	TermsOfService string `json:"terms_of_service"`
+	ConsentTypes   string `json:"consent_types"`
+	ClientIP       string `json:"client_ip"`
+	ReqID          string `json:"reqid"`
 }
 
 // IsCritical classifies events for LogPublisher.

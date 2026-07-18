@@ -24,7 +24,7 @@ func (b *Bot) Publish(ctx context.Context, event audit.SecurityEvent) error {
 		return err
 	}
 	if !b.Enabled {
-		log.Printf("[telegram] (noop) %s %s actor=%s", event.Action, event.Status, event.ActorEmailMasked)
+		log.Printf("[telegram] (noop) %s %s user=%s", event.Action, event.Status, event.MaskedEmail)
 		return nil
 	}
 	return nil
