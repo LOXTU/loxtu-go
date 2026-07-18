@@ -75,12 +75,9 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 		"be":     cred.BackupEligible,
 		"bs":     cred.BackupState,
 	}
-	// Delete existing credential with same kid (if any) — by user_id only to avoid bytes in WHERE
-	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		"DELETE passkey_credentials WHERE user_id = $uid AND kid = $kid", vars)
-	// Create new credential — created_at uses DEFAULT time::now()
+	// UPSERT works with []byte (CREATE doesn't — CBOR Parse error in SurrealDB 3.2.0)
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs`,
+		`UPSERT passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs`,
 		vars,
 	)
 	return err
