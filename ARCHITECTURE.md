@@ -1,106 +1,185 @@
-# LOXTU Architecture (Clean Architecture)
+# LOXTU Architecture v2.0 — Hard Rules
 
-## Layers
+> These rules are MANDATORY for all code, AI agents, and contributors.
+> Violating them breaks GDPR/NIS2 compliance, multi-tenant isolation, or build stability.
 
+---
+
+## 1. Identifiers
+
+| Rule | Correct | Forbidden |
+|------|---------|-----------|
+| User identifier | `user_id` (UUID v7, generated in Go) | `id`, `actor_id`, `subject_id`, `users:abc123` |
+| Tenant identifier | `tenant_id` (string) | `tenant_code`, `tenant_ns`, `ns_name` |
+| Session identifier | `token_hash` (SHA-256 of refresh token) | Storing raw tokens |
+
+**Enforcement:** Every `SELECT`, `CREATE`, `UPDATE` in Go must use `user_id` and `tenant_id`. JWT claims: `{"user_id": "...", "tenant_id": "..."}`.
+
+---
+
+## 2. PII — Envelope Encryption
+
+| Layer | Where | Format |
+|-------|-------|--------|
+| KEK (Key Encryption Key) | `LOXTU_DATA_KEY` env var | Base64-encoded 32-byte AES-256 key |
+| DEK (Data Encryption Key) | `users.encrypted_dek` | AES-256-GCM encrypted by KEK |
+| PII (email, name, phone, DOB) | `users.*_ciphertext` | AES-256-GCM encrypted by DEK |
+
+**Rules:**
+- Plain-text email/name/phone/DOB **NEVER** written to DB
+- Lookup by `email_hash` = `SHA-256(lowercase(email) + pepper)`
+- Display via `masked_email` = `"v***y@loxtu.com"` (not PII)
+- `LOXTU_HASH_PEPPER` — never rotate without full data migration
+
+**Crypto-shredding (GDPR Art. 17):**
+```sql
+UPDATE users SET
+    encrypted_dek = NONE,
+    email_hash = rand::string(32),
+    email_ciphertext = NONE,
+    name_ciphertext = NONE,
+    -- ... all *_ciphertext = NONE
+    status = 'erased'
+WHERE user_id = $id
 ```
-cmd/server/main.go          Composition root (config → adapters → core → HTTP)
-internal/core/              Business logic + ports (interfaces owned by client)
-internal/adapters/          SurrealDB, SMTP, Telegram, rate limit implementations
-internal/interfaces/        HTTP handlers, middleware, templ UI
-internal/config/            ENV → Config structs (only place adapters' ENV is read)
-internal/shared/            Cross-cutting helpers (MaskEmail, WriteJSON)
-migrations/                 SurrealQL schema (control_plane + tenant_template)
-web/                        //go:embed static assets
-```
+Destroying DEK makes all ciphertext permanently unreadable (including backups).
 
-## Dependency rule
+---
 
-```
-interfaces  →  core  ←  adapters
-                 ↑
-              config (composition root only)
-```
+## 3. Tenant Isolation
 
-- **Interfaces belong to the client** — ports live in `core/identity` / `core/audit`.
-- Adapters implement those ports and return **domain types** (`*identity.User`, not infrastructure DTOs).
-- Handlers are thin: parse HTTP → call core → render templ / set cookies / redirect.
-- **No service locators**: no `var DB`, no `auth.EmailClient`. Wire only in `main` via constructors.
-- Middleware uses `TenantResolver.ResolveByDomain` (Host / email-domain whitelist), never full email identity pre-auth.
+| Concern | Rule |
+|---------|------|
+| User data | `tenant_id` field in `users`, `passkey_users`, `sessions` |
+| Audit data | Separate namespace: `NS=audit, DB=<tenant_id>` |
+| Tenant resolution | By email domain: `WHERE $domain IN domain_whitelist` |
+| Cross-tenant check | Guard: `claims.TenantID != routerTenant` → 403 Forbidden |
 
-## Core packages
+**Forbidden:** Querying `NS=<tenant>` for audit data. Audit is ALWAYS `NS=audit`.
 
-| Package | Ports / services |
-|---------|------------------|
-| `core/identity` | User, Session, OTP, Passkey, OAuth, SessionAuthService, stores, RateLimiter, OTPSender, AlertSender |
-| `core/audit` | SecurityEvent, Store, LogPublisher, Lifecycle |
+---
 
-## Rate limiting
+## 4. Authentication — Separate Tables
 
-Universal port: `core/identity/rate_limit.go`
+| Method | Table | Fields |
+|--------|-------|--------|
+| Passkey (WebAuthn) | `passkey_users` + `passkey_credentials` | `user_id`, `handle`, `kid`, `public_key` |
+| PIN | `user_pins` | `user_id`, `pin_hash` (Argon2id) |
+| OAuth/SSO | `oauth_accounts` | `user_id`, `provider`, `provider_sub` |
+| Devices | `user_devices` | `user_id`, `device_id`, `vapid_endpoint` |
 
-```go
-type RateLimiter interface {
-    Allow(ctx, key, policy) (bool, error)
-    Reset(ctx, key) error
-    GetRemaining(ctx, key, policy) (int, error)
+**Rule:** `users` table contains ONLY identity + PII + RBAC. Authentication methods are in separate tables. If a new method appears (biometrics, FIDO2.1), create a new table — never add to `users`.
+
+---
+
+## 5. JWT Claims
+
+```json
+{
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "tenant_id": "loxtu",
+    "role": "worker",
+    "permissions": ["flights.read"],
+    "iss": "loxtu",
+    "sub": "550e8400-e29b-41d4-a716-446655440000",
+    "exp": 1234567890,
+    "iat": 1234567800
 }
-
-type RateLimitPolicy struct {
-    MaxAttempts int
-    Window      time.Duration // 0 = permanent quota (no time decay)
-    Description string
-}
 ```
 
-| Policy | Max | Window | Use |
-|--------|-----|--------|-----|
-| `PolicyOTP` | 5 | 10m | OTP send / fail keys |
-| `PolicyLogin` | 10 | 15m | general login thrash |
-| `PolicyRegistration` | 30 | 1h | signup abuse |
-| `PolicyMaxSessions` | 1 | **0** | one active session per user |
+**Forbidden fields:** `email`, `actor_id`, `tenant_ns`, `subject` (as email).
 
-- **Window = 0**: permanent counter; only `Reset` clears it (no separate QuotaManager).
-- Implementation: `adapters/ratelimit/memory.go` (`MemoryRateLimiter`). Future: Redis.
-- Handlers call `rl.Allow(..., PolicyOTP)` with keys like `RateKeyOTPSend(email)`.
+**Token timeout:** Read from `tenant.security_policy.access_token_timeout_minutes`, not hardcoded.
 
-HTTP middleware sliding window (`interfaces/http/middleware/ratelimit.go`) remains for coarse IP/path flood control — not the domain policy port.
+---
 
-## Notification system
+## 6. Clean Architecture Layers
 
-Family of channels in `core/identity/notifications.go` (not one mega-interface):
-
-```go
-type Notification struct {
-    RecipientID string
-    Metadata    map[string]string
-}
-type OTPNotification  struct { Notification; Code string; Expiry time.Duration }
-type AlertNotification struct { Notification; Title, Body string; Data map[string]string }
-
-type OTPSender interface   { SendOTP(ctx, OTPNotification) error }
-type AlertSender interface { SendAlert(ctx, AlertNotification) error }
+```
+cmd/server/main.go          ← Composition Root (DI only)
+internal/config/            ← ENV → Config structs (no adapter imports)
+internal/security/          ← Crypto primitives (AES, Argon2, KeyManager)
+internal/core/identity/     ← Domain entities + ports (interfaces)
+internal/core/audit/        ← Audit domain
+internal/adapters/          ← SurrealDB, SMTP, Telegram (implement core ports)
+internal/interfaces/http/   ← Handlers, middleware, templates
 ```
 
-| Port | Purpose | Implementations |
-|------|---------|-----------------|
-| `OTPSender` | one-time codes | `adapters/messaging/smtp` (email); future SMS |
-| `AlertSender` | push / cabin / on-screen | future Web Push, Telegram, cabin display |
+**Import rules:**
+- `core` NEVER imports `adapters`, `interfaces`, or `external`
+- `adapters` imports `core` (implements ports) + `security`
+- `interfaces` imports `core` + `adapters` (constructor DI)
+- `config` NEVER imports `adapters` (define structs locally)
 
-`OTPService` depends on `OTPSender` only. SMTP maps `RecipientID` + `Code` into the email body.
+---
 
-## Adapters
+## 7. Audit
 
-| Package | Implements |
-|---------|------------|
-| `adapters/persistence/surrealdb` | User/Session/Cred/Audit/Tenant repos + Pool |
-| `adapters/messaging/smtp` | `identity.OTPSender` |
-| `adapters/ratelimit` | `identity.RateLimiter` (memory) |
-| `adapters/security/telegram` | `audit.LogPublisher` (noop until enabled) |
+| Rule | Detail |
+|------|--------|
+| Namespace | `NS=audit, DB=<tenant_id>` |
+| Fields | `user_id`, `tenant_id`, `masked_email`, `action`, `status` |
+| Tenant guard | `LogEvent` checks `event.TenantID == expectedTenantID` |
+| Retention | `expires_at = time::now() + 2y` (NIS2 minimum) |
+| Worker pool | Async via buffered channel, 5 workers |
 
-## What was purged (M6+)
+**Forbidden:** Writing audit to `NS=<tenant>`. Audit is ALWAYS isolated.
 
-- `internal/features/*`, old `platform/*`, `infrastructure/email`
-- Handler-local `OTPRateLimiter` → core `RateLimiter` + memory adapter
-- `NotificationSender(to, code)` → `OTPSender(OTPNotification)`
+---
 
-Migrations live under `migrations/`.
+## 8. SurrealDB Schema Rules
+
+| Rule | Detail |
+|------|--------|
+| Schema | `SCHEMAFULL` for all tables |
+| Nullable fields | `TYPE option<T>` (not `TYPE none \| T`) |
+| Timestamps | `created_at`, `updated_at` on every table |
+| Indexes | Unique on `user_id`, `email_hash`, `token_hash`, `kid` |
+| No record IDs in Go | Use `user_id` (UUID string), not `users:abc123` |
+
+---
+
+## 9. Testing
+
+| Level | Where | What |
+|-------|-------|------|
+| Unit | `*_test.go` in package | Domain logic, crypto, JWT |
+| Integration | `adapters/persistence/surrealdb/*_test.go` | Real SurrealDB (Docker) |
+| E2E | `tests/e2e/` | Full HTTP flow with httptest |
+
+**Rule:** `go test ./...` must PASS before any commit. Tests run inside Docker with real SurrealDB.
+
+---
+
+## 10. Migration Files
+
+| Rule | Detail |
+|------|--------|
+| Location | `migrations/control_plane/`, `migrations/tenant_template/`, `migrations/audit_template/` |
+| Never DELETE | Only ADD new fields/tables |
+| Sync with DB | Migration files MUST match actual DB schema |
+| Apply order | `001` → `002` → `003` → ... (sequential) |
+
+**Current tables:**
+- `control_plane/001_tenant.surrealql` → `tenant` (with seeds)
+- `tenant_template/001_users.surrealql` → `users`
+- `tenant_template/002_passkey.surrealql` → `passkey_users`, `passkey_credentials`
+- `tenant_template/003_sessions.surrealql` → `sessions`
+- `tenant_template/004_oauth_accounts.surrealql` → `oauth_accounts`
+- `tenant_template/005_user_pins.surrealql` → `user_pins`
+- `tenant_template/006_user_devices.surrealql` → `user_devices`
+- `audit_template/001_audit.surrealql` → `user_consents`, `security_audit`
+
+---
+
+## 11. Deployment
+
+| Component | Port | Network |
+|-----------|------|---------|
+| loxtu-go | 8880 | loxtu-net |
+| surrealdb | 8881 | loxtu-net |
+| caddy | 80/443 | loxtu-net |
+
+**Docker compose:** `docker compose -f loxtu-go.yml down && build --no-cache && up -d`
+
+**Environment:** All secrets in `.env`, never in code. See `.env.example` for required keys.
