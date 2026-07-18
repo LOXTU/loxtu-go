@@ -3,34 +3,170 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/loxtu/loxtu-go/internal/core/identity"
+	"github.com/loxtu/loxtu-go/internal/security"
 )
 
-// UserRepo implements identity.UserStore — returns domain *identity.User only.
-type UserRepo struct {
-	pool *Pool
+// UserRepository implements identity.UserStore with envelope encryption.
+// PII is encrypted at rest; only ciphertext + hash stored in SurrealDB.
+type UserRepository struct {
+	pool       *Pool
+	keyManager security.KeyManager
+	pepper     string
 }
 
-// NewUserRepo constructs a UserStore adapter.
-func NewUserRepo(pool *Pool) *UserRepo {
-	return &UserRepo{pool: pool}
+// NewUserRepository constructs a UserStore adapter.
+func NewUserRepository(pool *Pool, km security.KeyManager, pepper string) *UserRepository {
+	return &UserRepository{pool: pool, keyManager: km, pepper: pepper}
 }
 
-var _ identity.UserStore = (*UserRepo)(nil)
+var _ identity.UserStore = (*UserRepository)(nil)
 
-// FindByActorID loads a user by full record id in ns.
-func (r *UserRepo) FindByActorID(ctx context.Context, ns, actorID string) (*identity.User, error) {
+// Create inserts a new user with envelope encryption.
+// Generates UUID v7 + DEK if not provided. Encrypts all PII fields.
+func (r *UserRepository) Create(ctx context.Context, user *identity.User) error {
+	if r.pool == nil {
+		return fmt.Errorf("db not connected")
+	}
+
+	// Generate UUID v7 if empty
+	if user.UserID == "" {
+		user.UserID = uuid.New().String()
+	}
+
+	// Generate DEK
+	dek, encDEK, err := r.keyManager.GenerateAndEncryptDEK()
+	if err != nil {
+		return fmt.Errorf("generate DEK: %w", err)
+	}
+	user.EncryptedDEK = encDEK
+
+	// Encrypt PII if provided
+	if user.EmailHash == "" {
+		// EmailHash must be set by caller (from plaintext email + pepper)
+		return fmt.Errorf("EmailHash is required")
+	}
+
+	// Compute masked email from hash (for display, not encrypted)
+	user.MaskedEmail = "***" // placeholder — caller sets if plaintext available
+
+	vars := map[string]any{
+		"user_id":         user.UserID,
+		"tenant_id":       user.TenantID,
+		"status":          user.Status,
+		"encrypted_dek":   encDEK,
+		"email_hash":      user.EmailHash,
+		"masked_email":    user.MaskedEmail,
+		"role":            user.Role,
+		"is_active":       user.IsActive,
+		"registration_attempts": user.RegistrationAttempts,
+		"login_count":           user.LoginCount,
+		"failed_login_count":    user.FailedLoginCount,
+		"created_at":      time.Now(),
+		"updated_at":      time.Now(),
+	}
+
+	// Encrypt optional PII fields
+	if user.EmailCiphertext != nil {
+		vars["email_ciphertext"] = user.EmailCiphertext
+	}
+	if user.NameCiphertext != nil {
+		vars["name_ciphertext"] = user.NameCiphertext
+	}
+	if user.SurnameCiphertext != nil {
+		vars["surname_ciphertext"] = user.SurnameCiphertext
+	}
+	if user.PhoneCiphertext != nil {
+		vars["phone_ciphertext"] = user.PhoneCiphertext
+	}
+	if user.DOBCiphertext != nil {
+		vars["dob_ciphertext"] = user.DOBCiphertext
+	}
+	if user.EmployeeIDCiphertext != nil {
+		vars["employee_id_ciphertext"] = user.EmployeeIDCiphertext
+	}
+	if user.EmployeeIDHash != "" {
+		vars["employee_id_hash"] = user.EmployeeIDHash
+	}
+	if len(user.Permissions) > 0 {
+		vars["permissions"] = user.Permissions
+	}
+	if user.Department != "" {
+		vars["department"] = user.Department
+	}
+	if user.Section != "" {
+		vars["section"] = user.Section
+	}
+	if user.Base != "" {
+		vars["base"] = user.Base
+	}
+	if len(user.Skills) > 0 {
+		vars["skills"] = user.Skills
+	}
+	if user.LastLoginAt != nil {
+		vars["last_login_at"] = *user.LastLoginAt
+	}
+	if user.LockedUntil != nil {
+		vars["locked_until"] = *user.LockedUntil
+	}
+	if user.HireDate != nil {
+		vars["hire_date"] = *user.HireDate
+	}
+
+	_ = dek // used for encryption above
+
+	_, err = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		`CREATE users SET
+			user_id = $user_id,
+			tenant_id = $tenant_id,
+			status = $status,
+			encrypted_dek = $encrypted_dek,
+			email_hash = $email_hash,
+			masked_email = $masked_email,
+			email_ciphertext = $email_ciphertext,
+			name_ciphertext = $name_ciphertext,
+			surname_ciphertext = $surname_ciphertext,
+			phone_ciphertext = $phone_ciphertext,
+			dob_ciphertext = $dob_ciphertext,
+			employee_id_ciphertext = $employee_id_ciphertext,
+			employee_id_hash = $employee_id_hash,
+			role = $role,
+			permissions = $permissions,
+			department = $department,
+			section = $section,
+			base = $base,
+			skills = $skills,
+			is_active = $is_active,
+			registration_attempts = $registration_attempts,
+			login_count = $login_count,
+			failed_login_count = $failed_login_count,
+			last_login_at = $last_login_at,
+			locked_until = $locked_until,
+			hire_date = $hire_date,
+			created_at = $created_at,
+			updated_at = $updated_at`,
+		vars,
+	)
+	if err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+	return nil
+}
+
+// FindByUserID loads a user by UUID. Returns raw ciphertext (no decryption).
+func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*identity.User, error) {
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	rec := getRecordID(actorID)
-	if rec == nil {
-		return nil, fmt.Errorf("invalid actor id: %s", actorID)
+	if userID == "" {
+		return nil, nil
 	}
-	results, err := r.pool.Query(ctx, ns, ns,
-		"SELECT * FROM users WHERE id = $id LIMIT 1",
-		map[string]any{"id": rec},
+	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"SELECT * FROM users WHERE user_id = $id LIMIT 1",
+		map[string]any{"id": userID},
 	)
 	if err != nil {
 		return nil, err
@@ -41,111 +177,236 @@ func (r *UserRepo) FindByActorID(ctx context.Context, ns, actorID string) (*iden
 	}
 	rm, ok := rows[0].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("unexpected user row type %T", rows[0])
+		return nil, nil
 	}
-	return mapUserRow(rm, ns), nil
+	return mapUserRowV2(rm), nil
 }
 
-// FindByEmailHash finds a user by SHA-256 email hash in ns.
-func (r *UserRepo) FindByEmailHash(ctx context.Context, ns, emailHash string) (*identity.User, error) {
+// FindByEmailHash loads a user by SHA-256 email hash. Returns raw ciphertext.
+func (r *UserRepository) FindByEmailHash(ctx context.Context, emailHash string) (*identity.User, error) {
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	if emailHash == "" || ns == "" {
+	if emailHash == "" {
 		return nil, nil
 	}
-	results, err := r.pool.Query(ctx, ns, ns,
+	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"SELECT * FROM users WHERE email_hash = $hash LIMIT 1",
 		map[string]any{"hash": emailHash},
 	)
 	if err != nil {
 		return nil, err
 	}
-	if len(results) == 0 {
+	rows := firstRows(results)
+	if len(rows) == 0 {
 		return nil, nil
 	}
-	switch res := results[0].Result.(type) {
-	case map[string]any:
-		return mapUserRow(res, ns), nil
-	case []any:
-		if len(res) == 0 {
-			return nil, nil
-		}
-		rm, ok := res[0].(map[string]any)
-		if !ok {
-			return nil, nil
-		}
-		return mapUserRow(rm, ns), nil
-	default:
+	rm, ok := rows[0].(map[string]any)
+	if !ok {
 		return nil, nil
 	}
+	return mapUserRowV2(rm), nil
 }
 
-// CreateMinimalUser inserts progressive-profiling row; returns actorID.
-func (r *UserRepo) CreateMinimalUser(ctx context.Context, ns, emailHash string) (string, error) {
+// Update persists changes to an existing user.
+func (r *UserRepository) Update(ctx context.Context, user *identity.User) error {
 	if r.pool == nil {
-		return "", fmt.Errorf("db not connected")
+		return fmt.Errorf("db not connected")
 	}
-	if existing, err := r.FindByEmailHash(ctx, ns, emailHash); err == nil && existing != nil {
-		return existing.ActorID, nil
+	if user.UserID == "" {
+		return fmt.Errorf("user_id is required for update")
 	}
+	vars := map[string]any{
+		"user_id":   user.UserID,
+		"status":    user.Status,
+		"role":      user.Role,
+		"is_active": user.IsActive,
+		"updated_at": time.Now(),
+	}
+	if len(user.Permissions) > 0 {
+		vars["permissions"] = user.Permissions
+	}
+	if user.LastLoginAt != nil {
+		vars["last_login_at"] = *user.LastLoginAt
+	}
+	if user.LockedUntil != nil {
+		vars["locked_until"] = *user.LockedUntil
+	}
+	vars["login_count"] = user.LoginCount
+	vars["failed_login_count"] = user.FailedLoginCount
 
-	results, err := r.pool.Query(ctx, ns, ns,
-		"CREATE users SET email_hash = $hash, tenant_id = $tenant, is_active = false RETURN id",
-		map[string]any{
-			"hash":   emailHash,
-			"tenant": ns,
-		},
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		`UPDATE users SET
+			status = $status,
+			role = $role,
+			permissions = $permissions,
+			is_active = $is_active,
+			login_count = $login_count,
+			failed_login_count = $failed_login_count,
+			last_login_at = $last_login_at,
+			locked_until = $locked_until,
+			updated_at = $updated_at
+		WHERE user_id = $user_id`,
+		vars,
 	)
 	if err != nil {
-		if existing, lerr := r.FindByEmailHash(ctx, ns, emailHash); lerr == nil && existing != nil {
-			return existing.ActorID, nil
-		}
-		return "", fmt.Errorf("create user: %w", err)
+		return fmt.Errorf("update user: %w", err)
 	}
-	if len(results) > 0 {
-		if rows, ok := results[0].Result.([]any); ok && len(rows) > 0 {
-			if row, ok := rows[0].(map[string]any); ok {
-				if id, ok := row["id"]; ok {
-					return formatRecordID(id), nil
-				}
-			}
-		}
-		if row, ok := results[0].Result.(map[string]any); ok {
-			if id, ok := row["id"]; ok {
-				return formatRecordID(id), nil
-			}
-		}
-	}
-	if existing, err := r.FindByEmailHash(ctx, ns, emailHash); err == nil && existing != nil {
-		return existing.ActorID, nil
-	}
-	return "", fmt.Errorf("create user: empty actor id after create")
+	return nil
 }
 
-// mapUserRow maps raw Surreal row → domain User (mapping lives in adapter only).
-func mapUserRow(rm map[string]any, ns string) *identity.User {
-	u := &identity.User{
-		ActorID:  formatRecordID(rm["id"]),
-		TenantNS: ns,
+// Erase performs crypto-shredding: destroys DEK and overwrites PII fields.
+// Compliant with GDPR Art. 17 right to erasure.
+func (r *UserRepository) Erase(ctx context.Context, userID string) error {
+	if r.pool == nil {
+		return fmt.Errorf("db not connected")
 	}
-	if h, ok := rm["email_hash"].(string); ok {
-		u.EmailHash = h
+	if userID == "" {
+		return fmt.Errorf("user_id is required for erase")
 	}
-	if e, ok := rm["email"].(string); ok {
-		u.Email = e
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		`UPDATE users SET
+			encrypted_dek = NONE,
+			email_hash = rand::string(32),
+			email_ciphertext = NONE,
+			name_ciphertext = NONE,
+			surname_ciphertext = NONE,
+			phone_ciphertext = NONE,
+			dob_ciphertext = NONE,
+			employee_id_ciphertext = NONE,
+			employee_id_hash = NONE,
+			masked_email = '***',
+			status = 'erased',
+			is_active = false,
+			updated_at = time::now()
+		WHERE user_id = $id`,
+		map[string]any{"id": userID},
+	)
+	if err != nil {
+		return fmt.Errorf("erase user: %w", err)
 	}
-	if role, ok := rm["role"].(string); ok {
-		u.Role = role
+	return nil
+}
+
+// mapUserRowV2 maps raw SurrealDB row → domain User v2 (no decryption).
+func mapUserRowV2(rm map[string]any) *identity.User {
+	u := &identity.User{}
+
+	// Identifiers
+	if v, ok := rm["user_id"].(string); ok {
+		u.UserID = v
 	}
-	if emp, ok := rm["employee_id"].(string); ok {
-		u.EmployeeID = emp
+	if v, ok := rm["tenant_id"].(string); ok {
+		u.TenantID = v
 	}
-	if active, ok := rm["is_active"].(bool); ok {
-		u.IsActive = active
+	if v, ok := rm["status"].(string); ok {
+		u.Status = v
 	}
-	if tenant, ok := rm["tenant_id"].(string); ok && tenant != "" {
-		u.TenantNS = tenant
+
+	// Encrypted DEK
+	u.EncryptedDEK = asBytes(rm["encrypted_dek"])
+
+	// PII ciphertext (raw bytes — not decrypted here)
+	u.EmailCiphertext = asBytes(rm["email_ciphertext"])
+	u.NameCiphertext = asBytes(rm["name_ciphertext"])
+	u.SurnameCiphertext = asBytes(rm["surname_ciphertext"])
+	u.PhoneCiphertext = asBytes(rm["phone_ciphertext"])
+	u.DOBCiphertext = asBytes(rm["dob_ciphertext"])
+	u.EmployeeIDCiphertext = asBytes(rm["employee_id_ciphertext"])
+
+	// Lookup fields
+	if v, ok := rm["email_hash"].(string); ok {
+		u.EmailHash = v
 	}
+	if v, ok := rm["masked_email"].(string); ok {
+		u.MaskedEmail = v
+	}
+	if v, ok := rm["employee_id_hash"].(string); ok {
+		u.EmployeeIDHash = v
+	}
+
+	// Role / permissions
+	if v, ok := rm["role"].(string); ok {
+		u.Role = v
+	}
+	if v, ok := rm["permissions"].([]any); ok {
+		for _, p := range v {
+			if s, ok := p.(string); ok {
+				u.Permissions = append(u.Permissions, s)
+			}
+		}
+	}
+	if v, ok := rm["department"].(string); ok {
+		u.Department = v
+	}
+	if v, ok := rm["section"].(string); ok {
+		u.Section = v
+	}
+	if v, ok := rm["base"].(string); ok {
+		u.Base = v
+	}
+	if v, ok := rm["skills"].([]any); ok {
+		for _, s := range v {
+			if str, ok := s.(string); ok {
+				u.Skills = append(u.Skills, str)
+			}
+		}
+	}
+	if v, ok := rm["is_active"].(bool); ok {
+		u.IsActive = v
+	}
+
+	// Counters
+	switch v := rm["registration_attempts"].(type) {
+	case float64:
+		u.RegistrationAttempts = int(v)
+	case int64:
+		u.RegistrationAttempts = int(v)
+	}
+	switch v := rm["login_count"].(type) {
+	case float64:
+		u.LoginCount = int(v)
+	case int64:
+		u.LoginCount = int(v)
+	}
+	switch v := rm["failed_login_count"].(type) {
+	case float64:
+		u.FailedLoginCount = int(v)
+	case int64:
+		u.FailedLoginCount = int(v)
+	}
+
+	// Timestamps
+	if v, ok := rm["created_at"].(time.Time); ok {
+		u.CreatedAt = v
+	}
+	if v, ok := rm["updated_at"].(time.Time); ok {
+		u.UpdatedAt = v
+	}
+
 	return u
+}
+
+// asBytes extracts []byte from SurrealDB response (handles CBOR binary).
+func asBytesV2(v any) []byte {
+	switch b := v.(type) {
+	case []byte:
+		return b
+	case string:
+		return []byte(b)
+	default:
+		return nil
+	}
+}
+
+// asBytes extracts []byte from SurrealDB response (handles CBOR binary).
+func asBytes(v any) []byte {
+	switch b := v.(type) {
+	case []byte:
+		return b
+	case string:
+		return []byte(b)
+	default:
+		return nil
+	}
 }

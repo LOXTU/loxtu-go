@@ -20,24 +20,21 @@ func NewSessionRepo(pool *Pool) *SessionRepo {
 
 var _ identity.SessionStore = (*SessionRepo)(nil)
 
-// SaveRefreshToken revokes prior sessions for actor then creates a new one.
-func (r *SessionRepo) SaveRefreshToken(ctx context.Context, ns, actorID, tokenHash string, expires time.Time) error {
+// Create persists a new session (revokes prior for same user first).
+func (r *SessionRepo) Create(ctx context.Context, session *identity.Session) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
-	actor := getRecordID(actorID)
-	if actor == nil {
-		return fmt.Errorf("invalid actor id: %s", actorID)
+	// Revoke prior sessions for this user (one-session policy)
+	if session.UserID != "" {
+		_ = r.RevokeByUserID(ctx, session.UserID)
 	}
-	if err := r.RevokeAllSessions(ctx, ns, actorID); err != nil {
-		return fmt.Errorf("revoke prior: %w", err)
-	}
-	_, err := r.pool.Query(ctx, ns, ns,
-		`CREATE sessions SET actor_id = $actor, token_hash = $hash, expires_at = time::from_unix($expires), created_at = time::now()`,
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		`CREATE sessions SET user_id = $uid, token_hash = $hash, expires_at = time::from_unix($expires), created_at = time::now()`,
 		map[string]any{
-			"actor":   actor,
-			"hash":    tokenHash,
-			"expires": expires.Unix(),
+			"uid":     session.UserID,
+			"hash":    session.TokenHash,
+			"expires": session.ExpiresAt.Unix(),
 		},
 	)
 	if err != nil {
@@ -46,28 +43,12 @@ func (r *SessionRepo) SaveRefreshToken(ctx context.Context, ns, actorID, tokenHa
 	return nil
 }
 
-// RevokeAllSessions deletes all sessions for actorID in ns.
-func (r *SessionRepo) RevokeAllSessions(ctx context.Context, ns, actorID string) error {
-	if r.pool == nil {
-		return fmt.Errorf("db not connected")
-	}
-	actor := getRecordID(actorID)
-	if actor == nil {
-		return fmt.Errorf("invalid actor id: %s", actorID)
-	}
-	_, err := r.pool.Query(ctx, ns, ns,
-		"DELETE sessions WHERE actor_id = $actor",
-		map[string]any{"actor": actor},
-	)
-	return err
-}
-
-// FindSessionByHash looks up a session by hashed refresh token.
-func (r *SessionRepo) FindSessionByHash(ctx context.Context, ns, tokenHash string) (*identity.Session, error) {
+// FindByTokenHash looks up a session by hashed refresh token.
+func (r *SessionRepo) FindByTokenHash(ctx context.Context, tokenHash string) (*identity.Session, error) {
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	results, err := r.pool.Query(ctx, ns, ns,
+	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"SELECT * FROM sessions WHERE token_hash = $hash LIMIT 1",
 		map[string]any{"hash": tokenHash},
 	)
@@ -80,12 +61,13 @@ func (r *SessionRepo) FindSessionByHash(ctx context.Context, ns, tokenHash strin
 	}
 	rm, ok := rows[0].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("unexpected session row type %T", rows[0])
+		return nil, nil
 	}
-
 	sess := &identity.Session{
 		TokenHash: tokenHash,
-		ActorID:   formatRecordID(rm["actor_id"]),
+	}
+	if uid, ok := rm["user_id"].(string); ok {
+		sess.UserID = uid
 	}
 	if exp, ok := parseTime(rm["expires_at"]); ok {
 		sess.ExpiresAt = exp
@@ -94,6 +76,42 @@ func (r *SessionRepo) FindSessionByHash(ctx context.Context, ns, tokenHash strin
 		sess.CreatedAt = cr
 	}
 	return sess, nil
+}
+
+// RevokeByUserID deletes all sessions for a user.
+func (r *SessionRepo) RevokeByUserID(ctx context.Context, userID string) error {
+	if r.pool == nil {
+		return fmt.Errorf("db not connected")
+	}
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"DELETE sessions WHERE user_id = $uid",
+		map[string]any{"uid": userID},
+	)
+	return err
+}
+
+// RevokeByTokenHash deletes a session by its token hash.
+func (r *SessionRepo) RevokeByTokenHash(ctx context.Context, tokenHash string) error {
+	if r.pool == nil {
+		return fmt.Errorf("db not connected")
+	}
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"DELETE sessions WHERE token_hash = $hash",
+		map[string]any{"hash": tokenHash},
+	)
+	return err
+}
+
+// CleanupExpired removes expired sessions.
+func (r *SessionRepo) CleanupExpired(ctx context.Context) error {
+	if r.pool == nil {
+		return fmt.Errorf("db not connected")
+	}
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"DELETE sessions WHERE expires_at < time::now()",
+		nil,
+	)
+	return err
 }
 
 func parseTime(v any) (time.Time, bool) {
