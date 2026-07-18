@@ -22,7 +22,7 @@ func GetTenantCode(ctx context.Context) string {
 
 type preAuthState struct {
 	Email    string `json:"email"`
-	TenantNS string `json:"tenant_ns"`
+	TenantID string `json:"tenant_id"`
 }
 
 // tenantResolver is package-level injectable for composition root (M5).
@@ -59,8 +59,8 @@ func TenantRouter(next http.Handler) http.Handler {
 
 func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
 	// Priority 1: JWT (authenticated requests)
-	if claims := getJWTClaims(r); claims != nil && claims.TenantNS != "" {
-		return claims.TenantNS
+	if claims := getJWTClaims(r); claims != nil && claims.TenantID != "" {
+		return claims.TenantID
 	}
 
 	// Priority 2: HTTP Host domain (e.g. app.loxtu.com or aerlingus.loxtu.com)
@@ -95,9 +95,9 @@ func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
 		}
 	}
 
-	// Priority 4: pre_auth_state cookie (set after OTP send with known NS)
-	if state := getPreAuthState(r); state != nil && state.TenantNS != "" {
-		return state.TenantNS
+	// Priority 4: pre_auth_state cookie (set after OTP send with known tenant)
+	if state := getPreAuthState(r); state != nil && state.TenantID != "" {
+		return state.TenantID
 	}
 
 	// Priority 5: public
@@ -185,7 +185,7 @@ func leftmostLabel(host string) string {
 }
 
 func getJWTClaims(r *http.Request) *struct {
-	TenantNS string `json:"tenant_ns"`
+	TenantID string `json:"tenant_id"`
 } {
 	if c, err := r.Cookie("loxtu_access"); err == nil && c.Value != "" {
 		parts := strings.Split(c.Value, ".")
@@ -199,9 +199,9 @@ func getJWTClaims(r *http.Request) *struct {
 			}
 			if decoded, err := b64decode(payload); err == nil {
 				var claims struct {
-					TenantNS string `json:"tenant_ns"`
+					TenantID string `json:"tenant_id"`
 				}
-				if json.Unmarshal(decoded, &claims) == nil && claims.TenantNS != "" {
+				if json.Unmarshal(decoded, &claims) == nil && claims.TenantID != "" {
 					return &claims
 				}
 			}
