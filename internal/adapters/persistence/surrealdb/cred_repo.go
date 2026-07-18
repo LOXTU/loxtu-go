@@ -51,6 +51,8 @@ CREATE passkey_credentials SET actor_id = $actor, kid = $kid, public_key = $pk, 
 }
 
 // FindByHandle resolves passkey_users by handle and loads credentials.
+// NOTE: SurrealDB Go SDK bytes comparison may not match raw []byte via WHERE.
+// For discoverable login, prefer FindByCredentialID (kid lookup) instead.
 func (r *CredRepo) FindByHandle(ctx context.Context, ns string, handle []byte) (*identity.PasskeyUser, error) {
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
@@ -84,6 +86,36 @@ func (r *CredRepo) FindByHandle(ctx context.Context, ns string, handle []byte) (
 		ActorID:     actorID,
 		Credentials: creds,
 	}, nil
+}
+
+// FindByCredentialID resolves passkey_users by credential kid (rawID).
+// Used for discoverable login — avoids bytes-comparison issues with handle.
+func (r *CredRepo) FindByCredentialID(ctx context.Context, ns string, credentialID []byte) (*identity.PasskeyUser, error) {
+	if r.pool == nil {
+		return nil, fmt.Errorf("db not connected")
+	}
+	// Step 1: find credential by kid
+	results, err := r.pool.Query(ctx, ns, ns,
+		"SELECT actor_id FROM passkey_credentials WHERE kid = $kid LIMIT 1",
+		map[string]any{"kid": credentialID},
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows := firstRows(results)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	rm, ok := rows[0].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	actorID := formatRecordID(rm["actor_id"])
+	if actorID == "" {
+		return nil, nil
+	}
+	// Step 2: load passkey_user by actor_id
+	return r.FindPasskeyUserByActor(ctx, ns, actorID)
 }
 
 // UpsertPasskeyUser creates or updates passkey_users row.

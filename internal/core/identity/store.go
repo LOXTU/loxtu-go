@@ -27,6 +27,7 @@ type SessionStore interface {
 type CredentialStore interface {
 	SaveCredential(ctx context.Context, ns, actorID string, cred *webauthn.Credential) error
 	FindByHandle(ctx context.Context, ns string, handle []byte) (*PasskeyUser, error)
+	FindByCredentialID(ctx context.Context, ns string, credentialID []byte) (*PasskeyUser, error)
 	UpsertPasskeyUser(ctx context.Context, ns, actorID, email string, handle []byte) error
 	FindPasskeyUserByActor(ctx context.Context, ns, actorID string) (*PasskeyUser, error)
 	UpdateSignCount(ctx context.Context, ns, actorID string, kid []byte, newCount int) error

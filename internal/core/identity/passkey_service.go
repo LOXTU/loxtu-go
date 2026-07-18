@@ -215,23 +215,15 @@ func (s *PasskeyService) BeginLoginDiscoverable(ctx context.Context, tenantNS st
 	if s.wa == nil {
 		return nil, "", fmt.Errorf("webauthn not initialised")
 	}
-	// Dummy user with no credentials — wa.BeginLogin will generate options
-	// without allowCredentials, letting the browser choose.
-	dummy := &PasskeyUser{
-		TenantNS: tenantNS,
-		Handle:   []byte("discoverable"),
-	}
-	options, session, err := s.wa.BeginLogin(dummy)
+	options, session, err := s.wa.BeginDiscoverableLogin()
 	if err != nil {
 		return nil, "", fmt.Errorf("begin discoverable login: %w", err)
 	}
-	// Remove allowCredentials — let browser show all available passkeys.
-	options.Response.AllowedCredentials = nil
 	challenge := session.Challenge
 	s.storeSession(challenge, &CeremonySession{
 		Challenge: challenge,
-		UserID:    string(dummy.Handle),
-		UserEmail: "", // resolved from assertion.userHandle in FinishLogin
+		UserID:    "", // no user yet — resolved from assertion.userHandle in FinishLogin
+		UserEmail: "",
 		TenantNS:  tenantNS,
 		WASession: session,
 	})
@@ -274,19 +266,43 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, challenge string, pars
 
 	var user *PasskeyUser
 	if cs.UserEmail != "" {
+		// Known-user login (email was provided at BeginLogin).
 		user, err = s.GetUser(ctx, cs.UserEmail, cs.TenantNS)
-	} else if len(parsed.Response.UserHandle) > 0 {
-		user, err = s.FindUserByHandle(ctx, parsed.Response.UserHandle)
-	} else {
-		return nil, nil, fmt.Errorf("no user identity for login")
-	}
-	if err != nil {
-		return nil, nil, err
+		if err != nil {
+			return nil, nil, err
+		}
+		cred, err := s.wa.ValidateLogin(user, *cs.WASession, parsed)
+		if err != nil {
+			return nil, nil, fmt.Errorf("validate login: %w", err)
+		}
+		if cred != nil {
+			_ = s.UpdateCredentialSignCount(ctx, user.Email, user.TenantNS, cred.ID, int(cred.Authenticator.SignCount))
+		}
+		return user, cred, nil
 	}
 
-	cred, err := s.wa.ValidateLogin(user, *cs.WASession, parsed)
+	// Discoverable login — resolve user from assertion.rawID (credential kid).
+	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
+		// Try by credential ID first (kid indexed, reliable).
+		u, findErr := s.creds.FindByCredentialID(ctx, cs.TenantNS, rawID)
+		if findErr == nil && u != nil {
+			user = u
+			return u, nil
+		}
+		// Fallback: try by handle (may fail due to bytes comparison).
+		u, findErr = s.FindUserByHandle(ctx, userHandle)
+		if findErr != nil {
+			return nil, findErr
+		}
+		user = u
+		return u, nil
+	}
+	cred, err := s.wa.ValidateDiscoverableLogin(handler, *cs.WASession, parsed)
 	if err != nil {
-		return nil, nil, fmt.Errorf("validate login: %w", err)
+		return nil, nil, fmt.Errorf("validate discoverable login: %w", err)
+	}
+	if user == nil {
+		return nil, nil, fmt.Errorf("user not resolved from discoverable login")
 	}
 	if cred != nil {
 		_ = s.UpdateCredentialSignCount(ctx, user.Email, user.TenantNS, cred.ID, int(cred.Authenticator.SignCount))

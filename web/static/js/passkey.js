@@ -214,6 +214,14 @@
       return;
     }
     registrationInProgress = true;
+
+    // CRITICAL: abort any pending conditional mediation before creating credential.
+    // navigator.credentials.get() and navigator.credentials.create() cannot coexist.
+    if (conditionalAbortController) {
+      conditionalAbortController.abort();
+      conditionalAbortController = null;
+    }
+
     console.log('[passkey] Starting registration for', email);
 
     try {
