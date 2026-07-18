@@ -66,20 +66,20 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 		return fmt.Errorf("nil credential")
 	}
 	vars := map[string]any{
-		"uid":    cred.UserID,
-		"kid":    cred.CredentialID,
-		"pk":     cred.PublicKey,
-		"sc":     cred.SignCount,
-		"trans":  cred.Transports,
-		"aaguid": cred.AAGUID,
-		"be":     cred.BackupEligible,
-		"bs":     cred.BackupState,
+		"user_id":          cred.UserID,
+		"kid":              cred.CredentialID,
+		"public_key":       cred.PublicKey,
+		"sign_count":       cred.SignCount,
+		"transports":       cred.Transports,
+		"aaguid":           cred.AAGUID,
+		"backup_eligible":  cred.BackupEligible,
+		"backup_state":     cred.BackupState,
 	}
-	// UPSERT works with []byte (CREATE doesn't — CBOR Parse error in SurrealDB 3.2.0)
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`UPSERT passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs`,
-		vars,
-	)
+	// Delete existing credential with same kid (if any) — by user_id only (string, no bytes)
+	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"DELETE passkey_credentials WHERE user_id = $uid", map[string]any{"uid": cred.UserID})
+	// Use "create" RPC method instead of "query" — handles CBOR bytes differently
+	_, err := r.pool.CreateRecord(ctx, r.pool.defaultNS, r.pool.defaultDB, "passkey_credentials", vars)
 	return err
 }
 

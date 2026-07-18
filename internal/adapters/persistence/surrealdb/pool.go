@@ -170,6 +170,36 @@ func (p *Pool) Query(ctx context.Context, ns, dbName, sql string, vars map[strin
 	return *results, nil
 }
 
+// CreateRecord uses the SDK's "create" RPC method (different from "query").
+// May handle CBOR bytes differently — use for tables where Query fails with Parse error.
+func (p *Pool) CreateRecord(ctx context.Context, ns, dbName, table string, data map[string]any) (map[string]any, error) {
+	conn, err := p.borrow(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("borrow: %w", err)
+	}
+
+	if err := conn.Use(ctx, ns, dbName); err != nil {
+		p.returnConn(conn)
+		return nil, fmt.Errorf("use ns=%s db=%s: %w", ns, dbName, err)
+	}
+
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	result, err := driver.Create[map[string]any](c, conn, models.Table(table), data)
+	if err != nil {
+		if connError(err) {
+			p.reconnect(c, conn)
+			return nil, fmt.Errorf("create record: %w", err)
+		}
+		p.returnConn(conn)
+		return nil, fmt.Errorf("create record: %w", err)
+	}
+
+	p.returnConn(conn)
+	return *result, nil
+}
+
 // Close drains and closes all connections.
 func (p *Pool) Close() {
 	p.mu.Lock()
