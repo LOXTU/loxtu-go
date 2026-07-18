@@ -3,6 +3,7 @@ package surrealdb
 import (
 	"context"
 	"encoding/base64"
+	"strings"
 	"fmt"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -71,24 +72,26 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 	kidB64 := base64.RawURLEncoding.EncodeToString(cred.CredentialID)
 	pkB64 := base64.RawURLEncoding.EncodeToString(cred.PublicKey)
 
-	vars := map[string]any{
-		"uid":    cred.UserID,
-		"kid":    kidB64,
-		"pk":     pkB64,
-		"sc":     cred.SignCount,
-		"trans":  cred.Transports,
-		"aaguid": cred.AAGUID,
-		"be":     cred.BackupEligible,
-		"bs":     cred.BackupState,
-	}
-	// Delete existing credential with same user_id (avoid bytes in WHERE)
+	// Delete existing credential with same user_id
 	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"DELETE passkey_credentials WHERE user_id = $uid", map[string]any{"uid": cred.UserID})
-	// Create new credential — all string/int/bool params, no bytes
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs`,
-		vars,
+
+	// Format transports as SurrealDB array literal
+	transStr := "[]"
+	if len(cred.Transports) > 0 {
+		parts := make([]string, len(cred.Transports))
+		for i, t := range cred.Transports {
+			parts[i] = fmt.Sprintf("'%s'", t)
+		}
+		transStr = "[" + strings.Join(parts, ",") + "]"
+	}
+
+	// Bypass CBOR entirely — embed all values in SQL string
+	query := fmt.Sprintf(
+		"CREATE passkey_credentials SET user_id = '%s', kid = '%s', public_key = '%s', sign_count = %d, transports = %s, aaguid = '%s', backup_eligible = %v, backup_state = %v",
+		cred.UserID, kidB64, pkB64, cred.SignCount, transStr, cred.AAGUID, cred.BackupEligible, cred.BackupState,
 	)
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB, query, nil)
 	return err
 }
 
