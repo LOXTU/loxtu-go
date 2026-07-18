@@ -50,6 +50,9 @@ DEFINE FIELD backup_eligible ON passkey_credentials TYPE option<bool>;
 DEFINE FIELD backup_state ON passkey_credentials TYPE option<bool>;
     -- Синхронизирован ли ключ сейчас.
 
+DEFINE FIELD created_at ON passkey_credentials TYPE datetime DEFAULT time::now();
+    -- Время регистрации ключа (для credential management UI).
+
 DEFINE INDEX idx_passkey_credentials_kid ON passkey_credentials FIELDS kid UNIQUE;
     -- Быстрый поиск ключа по ID при входе.
 

@@ -61,7 +61,7 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 		"email_hash":      user.EmailHash,
 		"masked_email":    user.MaskedEmail,
 		"role":            user.Role,
-		"is_active":       user.IsActive,
+		
 		"registration_attempts": user.RegistrationAttempts,
 		"login_count":           user.LoginCount,
 		"failed_login_count":    user.FailedLoginCount,
@@ -139,7 +139,7 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 			section = $section,
 			base = $base,
 			skills = $skills,
-			is_active = $is_active,
+			
 			registration_attempts = $registration_attempts,
 			login_count = $login_count,
 			failed_login_count = $failed_login_count,
@@ -220,7 +220,7 @@ func (r *UserRepository) Update(ctx context.Context, user *identity.User) error 
 		"user_id":   user.UserID,
 		"status":    user.Status,
 		"role":      user.Role,
-		"is_active": user.IsActive,
+		
 		"updated_at": time.Now(),
 	}
 	if len(user.Permissions) > 0 {
@@ -240,7 +240,7 @@ func (r *UserRepository) Update(ctx context.Context, user *identity.User) error 
 			status = $status,
 			role = $role,
 			permissions = $permissions,
-			is_active = $is_active,
+			
 			login_count = $login_count,
 			failed_login_count = $failed_login_count,
 			last_login_at = $last_login_at,
@@ -277,7 +277,6 @@ func (r *UserRepository) Erase(ctx context.Context, userID string) error {
 			employee_id_hash = NONE,
 			masked_email = '***',
 			status = 'erased',
-			is_active = false,
 			updated_at = time::now()
 		WHERE user_id = $id`,
 		map[string]any{"id": userID},
@@ -352,8 +351,8 @@ func mapUserRowV2(rm map[string]any) *identity.User {
 			}
 		}
 	}
-	if v, ok := rm["is_active"].(bool); ok {
-		u.IsActive = v
+	if v, ok := rm["status"].(string); ok {
+		u.Status = v
 	}
 
 	// Counters

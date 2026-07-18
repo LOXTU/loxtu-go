@@ -62,7 +62,7 @@ DEFINE FIELD masked_email ON users TYPE option<string>;
     -- Хранится для быстрого отображения без расшифровки ciphertext.
 
 -- ── Envelope Encryption (GDPR Art. 17 — Crypto-Shredding) ────────
-DEFINE FIELD encrypted_dek ON users TYPE bytes;
+DEFINE FIELD encrypted_dek ON users TYPE option<bytes>;
     -- Data Encryption Key (DEK), зашифрованный мастер-ключом (KEK).
     -- KEK хранится в ENV (LOXTU_DATA_KEY).
     -- Уникален для КАЖДОГО пользователя.
@@ -117,6 +117,12 @@ DEFINE FIELD skills ON users TYPE option<array<string>>;
     -- Используется в roster-модуле для назначения на рейсы.
 
 -- ── Индексы ──────────────────────────────────────────────────────
+DEFINE FIELD created_at ON users TYPE datetime DEFAULT time::now();
+    -- Время создания записи (для ротации токенов, аналитики, GDPR retention).
+
+DEFINE FIELD updated_at ON users TYPE datetime DEFAULT time::now();
+    -- Время последнего обновления (для аудита, cache invalidation).
+
 DEFINE INDEX idx_users_user_id ON users FIELDS user_id UNIQUE;
     -- Основной индекс по UUID.
 
