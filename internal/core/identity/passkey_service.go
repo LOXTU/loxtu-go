@@ -17,6 +17,7 @@ type CeremonySession struct {
 	UserID               string // UUID v7
 	UserEmail            string // plain email for WebAuthn display
 	TenantID             string
+	UserHandle           []byte // WebAuthn handle — must match PasskeyUser.WebAuthnID()
 	AllowedCredentialIDs [][]byte
 	Expires              int64
 	UserVerification     string
@@ -171,11 +172,12 @@ func (s *PasskeyService) BeginRegistration(ctx context.Context, email, tenantID 
 	}
 	challenge := session.Challenge
 	s.storeSession(challenge, &CeremonySession{
-		Challenge: challenge,
-		UserID:    user.UserID,
-		UserEmail: email,
-		TenantID:  tenantID,
-		WASession: session,
+		Challenge:  challenge,
+		UserID:     user.UserID,
+		UserEmail:  email,
+		TenantID:   tenantID,
+		UserHandle: user.Handle,
+		WASession:  session,
 	})
 	return options, challenge, nil
 }
@@ -196,6 +198,8 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 			return nil, nil, err
 		}
 	}
+	// Restore handle from session — must match WebAuthnID() for CreateCredential
+	user.Handle = cs.UserHandle
 	cred, err := s.wa.CreateCredential(user, *cs.WASession, parsed)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create credential: %w", err)
