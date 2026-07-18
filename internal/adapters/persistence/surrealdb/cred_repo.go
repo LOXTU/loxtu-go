@@ -42,20 +42,24 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 	if cred == nil {
 		return fmt.Errorf("nil credential")
 	}
+	vars := map[string]any{
+		"uid":   cred.UserID,
+		"kid":   cred.CredentialID,
+		"pk":    cred.PublicKey,
+		"sc":    cred.SignCount,
+		"trans": cred.Transports,
+		"aaguid": cred.AAGUID,
+		"be":    cred.BackupEligible,
+		"bs":    cred.BackupState,
+		"ca":    cred.CreatedAt,
+	}
+	// Delete existing credential with same kid (if any)
+	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		"DELETE passkey_credentials WHERE kid = $kid AND user_id = $uid", vars)
+	// Create new credential
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		`DELETE passkey_credentials WHERE kid = $kid AND user_id = $uid;
-CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs, created_at = $ca`,
-		map[string]any{
-			"uid":   cred.UserID,
-			"kid":   cred.CredentialID,
-			"pk":    cred.PublicKey,
-			"sc":    cred.SignCount,
-			"trans": cred.Transports,
-			"aaguid": cred.AAGUID,
-			"be":    cred.BackupEligible,
-			"bs":    cred.BackupState,
-			"ca":    cred.CreatedAt,
-		},
+		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs, created_at = $ca`,
+		vars,
 	)
 	return err
 }
