@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -57,7 +58,8 @@ func (r *CredRepo) FindHandleByUserID(ctx context.Context, userID string) ([]byt
 	return asBytes(rm["handle"]), nil
 }
 
-// SaveCredential upserts a passkey credential.
+// SaveCredential stores a passkey credential.
+// kid and public_key stored as base64 strings (SurrealDB 3.2.0 CBOR bytes bug workaround).
 func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCredential) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
@@ -65,21 +67,28 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 	if cred == nil {
 		return fmt.Errorf("nil credential")
 	}
+
+	kidB64 := base64.RawURLEncoding.EncodeToString(cred.CredentialID)
+	pkB64 := base64.RawURLEncoding.EncodeToString(cred.PublicKey)
+
 	vars := map[string]any{
-		"user_id":          cred.UserID,
-		"kid":              cred.CredentialID,
-		"public_key":       cred.PublicKey,
-		"sign_count":       cred.SignCount,
-		"transports":       cred.Transports,
-		"aaguid":           cred.AAGUID,
-		"backup_eligible":  cred.BackupEligible,
-		"backup_state":     cred.BackupState,
+		"uid":    cred.UserID,
+		"kid":    kidB64,
+		"pk":     pkB64,
+		"sc":     cred.SignCount,
+		"trans":  cred.Transports,
+		"aaguid": cred.AAGUID,
+		"be":     cred.BackupEligible,
+		"bs":     cred.BackupState,
 	}
-	// Delete existing credential with same kid (if any) — by user_id only (string, no bytes)
+	// Delete existing credential with same user_id (avoid bytes in WHERE)
 	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"DELETE passkey_credentials WHERE user_id = $uid", map[string]any{"uid": cred.UserID})
-	// Use "create" RPC method instead of "query" — handles CBOR bytes differently
-	_, err := r.pool.CreateRecord(ctx, r.pool.defaultNS, r.pool.defaultDB, "passkey_credentials", vars)
+	// Create new credential — all string/int/bool params, no bytes
+	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+		`CREATE passkey_credentials SET user_id = $uid, kid = $kid, public_key = $pk, sign_count = $sc, transports = $trans, aaguid = $aaguid, backup_eligible = $be, backup_state = $bs`,
+		vars,
+	)
 	return err
 }
 
@@ -107,14 +116,15 @@ func (r *CredRepo) FindCredentialsByUserID(ctx context.Context, userID string) (
 	return creds, nil
 }
 
-// FindCredentialByKID loads a single credential by its kid (credential ID).
+// FindCredentialByKID loads a single credential by its kid (base64 string).
 func (r *CredRepo) FindCredentialByKID(ctx context.Context, kid []byte) (*identity.PasskeyCredential, error) {
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
+	kidB64 := base64.RawURLEncoding.EncodeToString(kid)
 	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"SELECT * FROM passkey_credentials WHERE kid = $kid LIMIT 1",
-		map[string]any{"kid": kid},
+		map[string]any{"kid": kidB64},
 	)
 	if err != nil {
 		return nil, err
@@ -170,18 +180,26 @@ func (r *CredRepo) UpdateSignCount(ctx context.Context, userID string, kid []byt
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
+	kidB64 := base64.RawURLEncoding.EncodeToString(kid)
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"UPDATE passkey_credentials SET sign_count = $sc WHERE user_id = $uid AND kid = $kid",
-		map[string]any{"uid": userID, "kid": kid, "sc": newCount},
+		map[string]any{"uid": userID, "kid": kidB64, "sc": newCount},
 	)
 	return err
 }
 
 // mapCredentialRow maps SurrealDB row → domain PasskeyCredential.
+// kid and public_key are base64 strings in DB, decoded to []byte.
 func mapCredentialRow(rm map[string]any) *identity.PasskeyCredential {
 	c := &identity.PasskeyCredential{}
-	c.CredentialID = asBytes(rm["kid"])
-	c.PublicKey = asBytes(rm["public_key"])
+	// kid: base64 string → []byte
+	if kidStr, ok := rm["kid"].(string); ok {
+		c.CredentialID, _ = base64.RawURLEncoding.DecodeString(kidStr)
+	}
+	// public_key: base64 string → []byte
+	if pkStr, ok := rm["public_key"].(string); ok {
+		c.PublicKey, _ = base64.RawURLEncoding.DecodeString(pkStr)
+	}
 	c.UserID, _ = rm["user_id"].(string)
 	c.AAGUID, _ = rm["aaguid"].(string)
 	switch sc := rm["sign_count"].(type) {

@@ -32,10 +32,10 @@ DEFINE TABLE passkey_credentials SCHEMAFULL;
 DEFINE FIELD user_id ON passkey_credentials TYPE string;
     -- UUID владельца ключа.
 
-DEFINE FIELD kid ON passkey_credentials TYPE bytes;
+DEFINE FIELD kid ON passkey_credentials TYPE string;
     -- Credential ID (уникальный идентификатор ключа).
 
-DEFINE FIELD public_key ON passkey_credentials TYPE bytes;
+DEFINE FIELD public_key ON passkey_credentials TYPE string;
     -- Публичный ключ (используется для верификации подписи).
 
 DEFINE FIELD transports ON passkey_credentials TYPE option<array<string>>;
