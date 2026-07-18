@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/loxtu/loxtu-go/internal/core/identity"
-	"github.com/loxtu/loxtu-go/internal/shared/httputil"
 	mw "github.com/loxtu/loxtu-go/internal/interfaces/http/middleware"
 )
 
@@ -15,9 +14,9 @@ import (
 type authCtxKey string
 
 const (
-	ctxEmail      authCtxKey = "email"
-	ctxRole       authCtxKey = "role"
-	ctxEmployeeID authCtxKey = "employee_id"
+	ctxUserID authCtxKey = "user_id"
+	ctxEmail  authCtxKey = "email"
+	ctxRole   authCtxKey = "role"
 )
 
 // PublicPaths skip Guard authentication.
@@ -58,7 +57,6 @@ func Guard(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		log.Printf("[guard] checking token for %s", path)
 
 		cookie, err := r.Cookie("loxtu_access")
 		if err != nil {
@@ -72,20 +70,19 @@ func Guard(next http.Handler) http.Handler {
 		}
 
 		routerTenant := mw.GetTenantCode(r.Context())
-		if claims.TenantNS != "" && routerTenant != "" && claims.TenantNS != routerTenant {
-			log.Printf("[guard] TENANT MISMATCH: JWT=%s Router=%s — blocking", claims.TenantNS, routerTenant)
+		if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
+			log.Printf("[guard] TENANT MISMATCH: JWT=%s Router=%s — blocking", claims.TenantID, routerTenant)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
 		if lc := mw.GetLogCtx(r.Context()); lc != nil {
-			lc.Email = httputil.MaskEmail(claims.Email)
-			lc.TenantID = claims.TenantNS
+			lc.TenantID = claims.TenantID
 		}
 
-		ctx := context.WithValue(r.Context(), ctxEmail, claims.Email)
+		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
 		ctx = context.WithValue(ctx, ctxRole, claims.Role)
-		ctx = context.WithValue(ctx, ctxEmployeeID, claims.EmployeeID)
+		// Email stored in cookie (loxtu_email), resolved at use site
 
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
@@ -104,8 +101,17 @@ func unauthorized(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// GetEmail returns email claim from context (after Guard).
+// GetUserID returns user_id claim from context (after Guard).
+func GetUserID(r *http.Request) string {
+	v, _ := r.Context().Value(ctxUserID).(string)
+	return v
+}
+
+// GetEmail returns email from loxtu_email cookie (set during auth).
 func GetEmail(r *http.Request) string {
+	if c, err := r.Cookie("loxtu_email"); err == nil {
+		return c.Value
+	}
 	v, _ := r.Context().Value(ctxEmail).(string)
 	return v
 }
@@ -113,11 +119,5 @@ func GetEmail(r *http.Request) string {
 // GetRole returns role claim from context.
 func GetRole(r *http.Request) string {
 	v, _ := r.Context().Value(ctxRole).(string)
-	return v
-}
-
-// GetEmployeeID returns employee_id claim from context.
-func GetEmployeeID(r *http.Request) string {
-	v, _ := r.Context().Value(ctxEmployeeID).(string)
 	return v
 }

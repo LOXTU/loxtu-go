@@ -21,6 +21,7 @@ import (
 	"github.com/loxtu/loxtu-go/internal/core/identity"
 	"github.com/loxtu/loxtu-go/internal/interfaces/http/handlers"
 	imw "github.com/loxtu/loxtu-go/internal/interfaces/http/middleware"
+	"github.com/loxtu/loxtu-go/internal/security"
 	"github.com/loxtu/loxtu-go/web"
 )
 
@@ -43,25 +44,49 @@ func main() {
 	if err != nil {
 		log.Fatalf("[main] Security config: %v", err)
 	}
-	_ = secCfg // wired in Phase 3+
+
+	// Wire DecryptPIIFn for core PII decryption
+	identity.DecryptPIIFn = security.DecryptPII
 
 	// ── Adapters ──────────────────────────────────────────────────────────
 	ctx, cancelInit := context.WithTimeout(context.Background(), 30*time.Second)
-	pool, err := surrealdb.NewPool(ctx, dbCfg)
+	pool, err := surrealdb.NewPool(ctx, surrealdb.Config{
+		Endpoint:  dbCfg.Endpoint,
+		Username:  dbCfg.Username,
+		Password:  dbCfg.Password,
+		Namespace: dbCfg.Namespace,
+		Database:  dbCfg.Database,
+		MaxConns:  dbCfg.MaxConns,
+	})
 	cancelInit()
 	if err != nil {
 		log.Fatalf("[main] DB pool init failed: %v", err)
 	}
 	defer pool.Close()
 
-	users := surrealdb.NewUserRepo(pool)
+	km, err := security.NewEnvKeyManager()
+	if err != nil {
+		log.Fatalf("[main] KeyManager init failed: %v", err)
+	}
+
+	users := surrealdb.NewUserRepository(pool, km, secCfg.HashPepper)
 	sessions := surrealdb.NewSessionRepo(pool)
 	creds := surrealdb.NewCredRepo(pool)
 	tenantRepo := surrealdb.NewTenantRepo(pool)
 	auditR := surrealdb.NewAuditRepo(pool)
 	defer auditR.Stop()
 
-	mail := smtp.New(smtpCfg)
+	mail := smtp.New(smtp.Config{
+		Host:          smtpCfg.Host,
+		Port:          smtpCfg.Port,
+		User:          smtpCfg.User,
+		Password:      smtpCfg.Password,
+		FromAddr:      smtpCfg.FromAddr,
+		FromName:      smtpCfg.FromName,
+		Enabled:       smtpCfg.Enabled,
+		Timeout:       smtpCfg.Timeout,
+		TLSServerName: smtpCfg.TLSServerName,
+	})
 
 	// ── Core services ─────────────────────────────────────────────────────
 	otpService := identity.NewOTPService(mail)
@@ -74,9 +99,15 @@ func main() {
 	passkeyService := identity.NewPasskeyService(users, creds, wa)
 
 	rateLimiter := ratelimit.NewMemoryRateLimiter()
-	passkeyPresence := handlers.PasskeyPresenceFunc(func(ctx context.Context, tenantNS, email string) bool {
-		u, err := passkeyService.GetUser(ctx, email, tenantNS)
-		return err == nil && u != nil && len(u.Credentials) > 0
+	passkeyPresence := handlers.PasskeyPresenceFunc(func(ctx context.Context, tenantID, email string) bool {
+		// Resolve user by email hash, then check if they have credentials
+		emailHash := security.HashEmail(email, secCfg.HashPepper)
+		u, err := users.FindByEmailHash(ctx, emailHash)
+		if err != nil || u == nil {
+			return false
+		}
+		userCreds, _ := creds.FindCredentialsByUserID(ctx, u.UserID)
+		return len(userCreds) > 0
 	})
 
 	// ── HTTP handlers (constructor DI only) ───────────────────────────────
@@ -86,8 +117,8 @@ func main() {
 		users,
 		auditR,
 		rateLimiter,
-		nil, // ConsentChecker — wire audit consent adapter when ready
 		passkeyPresence,
+		secCfg.HashPepper,
 	)
 	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, auditR)
 	dashH := handlers.NewDashboardHandler()
@@ -157,7 +188,6 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("[main] HTTP server shutdown error: %v", err)
 		}
-		// pool.Close and auditR.Stop run via defers on main return
 		log.Printf("[main] Server exiting cleanly")
 	}()
 

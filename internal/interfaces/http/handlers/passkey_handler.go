@@ -14,6 +14,7 @@ import (
 	mw "github.com/loxtu/loxtu-go/internal/interfaces/http/middleware"
 	authtmpl "github.com/loxtu/loxtu-go/internal/interfaces/templates/auth"
 	"github.com/loxtu/loxtu-go/internal/shared/httputil"
+	"github.com/loxtu/loxtu-go/internal/security"
 )
 
 // PasskeyHandler is the thin HTTP surface for WebAuthn ceremonies.
@@ -49,7 +50,7 @@ func (h *PasskeyHandler) RegisterPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	identity.Logf("Rendering passkey register page for %s", httputil.MaskEmail(email))
+	identity.Logf("Rendering passkey register page for %s", security.MaskEmail(email))
 	templ.Handler(authtmpl.RegisterPage(email)).ServeHTTP(w, r)
 }
 
@@ -63,15 +64,15 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
 		return
 	}
-	tenantNS := mw.GetTenantCode(r.Context())
-	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantNS)
+	tenantID := mw.GetTenantCode(r.Context())
+	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantID)
 	if err != nil {
 		identity.Logf("ERROR BeginRegistration: %v", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to begin"})
 		return
 	}
 	_ = challenge
-	identity.Logf("Registration options sent for %s", httputil.MaskEmail(email))
+	identity.Logf("Registration options sent for %s", security.MaskEmail(email))
 	httputil.WriteJSON(w, http.StatusOK, options)
 }
 
@@ -82,7 +83,6 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credential"})
 		return
 	}
-	// Challenge is store-keyed; client data carries the same challenge the RP created.
 	challenge := r.Header.Get("X-WebAuthn-Challenge")
 	if challenge == "" {
 		challenge = parsed.Response.CollectedClientData.Challenge
@@ -94,29 +94,36 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	_ = cred
-	identity.Logf("Registration complete for %s", httputil.MaskEmail(user.Email))
+	identity.Logf("Registration complete for %s", security.MaskEmail(user.Email))
+
+	tenantID := user.TenantID
+	if tenantID == "" {
+		tenantID = mw.GetTenantCode(r.Context())
+	}
+
 	if h.audit != nil {
 		_ = h.audit.LogSecurityEvent(r.Context(), audit.SecurityEvent{
-			ActorID: user.ActorID, ActorEmailMasked: httputil.MaskEmail(user.Email),
-			Action: "passkey.register", Status: "success",
-			ClientIP: mw.GetClientIP(r), ReqID: mw.GetRequestID(r.Context()),
+			UserID:      user.UserID,
+			TenantID:    tenantID,
+			MaskedEmail: security.MaskEmail(user.Email),
+			Action:      "passkey.register",
+			Status:      "success",
+			ClientIP:    mw.GetClientIP(r),
+			ReqID:       mw.GetRequestID(r.Context()),
 		})
 	}
+
 	// Issue tokens after registration
-	tenantNS := user.TenantNS
-	if tenantNS == "" {
-		tenantNS = mw.GetTenantCode(r.Context())
-	}
-	pair, err := h.tokens.IssueSession(r.Context(), user.Email, tenantNS, "", "worker")
+	pair, err := h.tokens.IssueSession(r.Context(), user.UserID, tenantID, "worker", nil)
 	if err == nil {
 		setAuthCookies(w, pair)
 		http.SetCookie(w, &http.Cookie{Name: "loxtu_email", Value: user.Email, Path: "/", MaxAge: 3600})
 		http.SetCookie(w, &http.Cookie{
-			Name: "loxtu_tenant", Value: tenantNS,
+			Name: "loxtu_tenant", Value: tenantID,
 			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		})
 		clearTempAuthCookies(w)
-		}
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "redirect": "/dashboard"})
 }
 
@@ -135,31 +142,35 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	tenantNS := mw.GetTenantCode(r.Context())
-	identity.Logf("SKIP passkey for %s", httputil.MaskEmail(email))
-	pair, err := h.tokens.IssueSession(r.Context(), email, tenantNS, "", "worker")
+	tenantID := mw.GetTenantCode(r.Context())
+	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
+
+	// Find user to get userID
+	emailHash := security.HashEmail(email, "")
+	u, _ := h.passkey.ResolveUserID(r.Context(), email)
+	userID := u // ResolveUserID returns string
+
+	pair, err := h.tokens.IssueSession(r.Context(), userID, tenantID, "worker", nil)
 	if err != nil {
 		log.Printf("[passkey] skip IssueTokens: %v", err)
 	} else {
 		setAuthCookies(w, pair)
 		http.SetCookie(w, &http.Cookie{
-			Name: "loxtu_tenant", Value: tenantNS,
+			Name: "loxtu_tenant", Value: tenantID,
 			Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		})
 	}
 	clearTempAuthCookies(w)
-	// HTMX: redirect to dashboard via HX-Redirect header (SPA navigation).
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)
+	_ = emailHash
 }
 
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-	tenantNS := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantCode(r.Context())
 	if email == "" {
-		// Discoverable credentials: no email → return challenge without allowCredentials.
-		// Browser will show all available passkeys for this RP.
-		options, challenge, err := h.passkey.BeginLoginDiscoverable(r.Context(), tenantNS)
+		options, challenge, err := h.passkey.BeginLoginDiscoverable(r.Context(), tenantID)
 		if err != nil {
 			identity.Logf("BeginLogin discoverable: no credentials: %v", err)
 			httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "no-credentials"})
@@ -169,9 +180,9 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, options)
 		return
 	}
-	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantNS)
+	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantID)
 	if err != nil {
-		identity.Logf("BeginLogin: no credentials for %s: %v", httputil.MaskEmail(email), err)
+		identity.Logf("BeginLogin: no credentials for %s: %v", security.MaskEmail(email), err)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "no-credentials"})
 		return
 	}
@@ -191,12 +202,12 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "auth failed"})
 		return
 	}
-	tenantNS := user.TenantNS
-	if tenantNS == "" {
-		tenantNS = mw.GetTenantCode(r.Context())
+	tenantID := user.TenantID
+	if tenantID == "" {
+		tenantID = mw.GetTenantCode(r.Context())
 	}
-	identity.Logf("Login successful for %s in NS=%s", httputil.MaskEmail(user.Email), tenantNS)
-	pair, err := h.tokens.IssueSession(r.Context(), user.Email, tenantNS, "", "worker")
+	identity.Logf("Login successful for user=%s in tenant=%s", user.UserID, tenantID)
+	pair, err := h.tokens.IssueSession(r.Context(), user.UserID, tenantID, "worker", nil)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "token issue"})
 		return
@@ -204,18 +215,22 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	setAuthCookies(w, pair)
 	if h.audit != nil {
 		_ = h.audit.LogSecurityEvent(r.Context(), audit.SecurityEvent{
-			ActorID: user.ActorID, ActorEmailMasked: httputil.MaskEmail(user.Email),
-			Action: "passkey.login", Status: "success",
-			ClientIP: mw.GetClientIP(r), ReqID: mw.GetRequestID(r.Context()),
+			UserID:      user.UserID,
+			TenantID:    tenantID,
+			MaskedEmail: security.MaskEmail(user.Email),
+			Action:      "passkey.login",
+			Status:      "success",
+			ClientIP:    mw.GetClientIP(r),
+			ReqID:       mw.GetRequestID(r.Context()),
 		})
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "redirect": "/dashboard"})
 }
 
 // PasskeyPresenceFunc adapts a function to PasskeyPresence.
-type PasskeyPresenceFunc func(ctx context.Context, tenantNS, email string) bool
+type PasskeyPresenceFunc func(ctx context.Context, tenantID, email string) bool
 
 // HasPasskey implements PasskeyPresence.
-func (f PasskeyPresenceFunc) HasPasskey(ctx context.Context, tenantNS, email string) bool {
-	return f(ctx, tenantNS, email)
+func (f PasskeyPresenceFunc) HasPasskey(ctx context.Context, tenantID, email string) bool {
+	return f(ctx, tenantID, email)
 }
