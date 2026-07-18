@@ -186,3 +186,10 @@ func pad(s string, w int, c byte) string {
 	copy(b[w-len(s):], s)
 	return string(b)
 }
+// SetLogEmail sets the masked email in the request's log context.
+// Call from handlers when email is known (form value, cookie, JWT).
+func SetLogEmail(r *http.Request, email string) {
+	if lc := GetLogCtx(r.Context()); lc != nil && email != "" {
+		lc.Email = MaskEmail(email)
+	}
+}

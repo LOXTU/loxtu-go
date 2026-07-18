@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -90,11 +90,12 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(authtmpl.LoginFormPartial()).ServeHTTP(w, r)
 		return
 	}
+	mw.SetLogEmail(r, email)
 
 	if h.rl != nil {
 		allowed, err := h.rl.Allow(r.Context(), identity.RateKeyOTPSend(email), identity.PolicyOTP)
 		if err != nil {
-			log.Printf("[auth] rate limit error: %v", err)
+			slog.Warn("rate limit error", "err", err)
 		}
 		if !allowed {
 			msg := "Too many attempts. Please wait before trying again."
@@ -104,7 +105,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.otp.Send(r.Context(), email); err != nil {
-		log.Printf("otp send error: %v", err)
+		slog.Error("OTP send failed", "err", err)
 		templ.Handler(authtmpl.LoginFormPartial()).ServeHTTP(w, r)
 		return
 	}
@@ -136,7 +137,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt: time.Now(),
 		}
 		if err := h.users.Create(r.Context(), newUser); err != nil {
-			log.Printf("[auth] CRITICAL: cannot create user for %s: %v", security.MaskEmail(email), err)
+			slog.Error("cannot create user", "email", security.MaskEmail(email), "err", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -173,13 +174,14 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := r.FormValue("email")
+	mw.SetLogEmail(r, email)
 	codes := r.Form["code"]
 	code := strings.Join(codes, "")
 
 	if h.rl != nil {
 		allowed, err := h.rl.Allow(r.Context(), identity.RateKeyOTPFail(email), identity.PolicyOTP)
 		if err != nil {
-			log.Printf("[auth] rate limit error: %v", err)
+			slog.Warn("rate limit error", "err", err)
 		}
 		if !allowed {
 			msg := "Too many attempts. Please wait before trying again."
@@ -213,7 +215,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	emailHash := security.HashEmail(email, h.pepper)
 	u, err := h.users.FindByEmailHash(r.Context(), emailHash)
 	if err != nil || u == nil || u.UserID == "" {
-		log.Printf("[auth] ERROR: user not found for %s after OTP verify", security.MaskEmail(email))
+		slog.Error("user not found after OTP verify", "email", security.MaskEmail(email))
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
@@ -235,7 +237,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	granted := h.consentGranted(r.Context(), u.UserID, masked)
 	if granted {
 		if err := h.issueCookies(w, r, u.UserID, tenantID, "auth.otp.verify"); err != nil {
-			log.Printf("ERROR IssueTokens: %v", err)
+			slog.Error("IssueTokens failed", "err", err)
 		} else {
 			w.Header().Set("HX-Redirect", "/dashboard")
 			w.WriteHeader(http.StatusOK)
@@ -275,6 +277,7 @@ func (h *AuthHandler) ConsentPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
+	mw.SetLogEmail(r, email)
 	gdpr := r.FormValue("gdpr")
 	nis2 := r.FormValue("nis2")
 	soc2 := r.FormValue("soc2")
@@ -291,7 +294,7 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 	emailHash := security.HashEmail(email, h.pepper)
 	u, err := h.users.FindByEmailHash(r.Context(), emailHash)
 	if err != nil || u == nil {
-		log.Printf("[auth] ERROR: user not found for %s on consent accept", security.MaskEmail(email))
+		slog.Error("user not found on consent accept", "email", security.MaskEmail(email))
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
@@ -320,13 +323,13 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantID, email) {
-		log.Printf("[auth] Passkey presence check result: true for %s", masked)
+		slog.Info("passkey presence: true", "email", masked)
 		_ = h.issueCookies(w, r, u.UserID, tenantID, "auth.consent.accept")
 		w.Header().Set("HX-Redirect", "/dashboard")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	log.Printf("[auth] Passkey presence check result: false for %s → showing register", masked)
+	slog.Info("passkey presence: false, showing register", "email", masked)
 	templ.Handler(authtmpl.RegisterPartial(email)).ServeHTTP(w, r)
 }
 
@@ -359,10 +362,10 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	log.Printf("[auth] Logout for user=%s (reqid=%s)", userID, mw.GetRequestID(r.Context()))
+	slog.Info("logout", "user_id", userID, "reqid", mw.GetRequestID(r.Context()))
 	if userID != "" {
 		if err := h.tokens.RevokeAllForUser(r.Context(), userID); err != nil {
-			log.Printf("[auth] WARN: Session revocation skipped (non-fatal): %v", err)
+			slog.Warn("session revocation skipped", "err", err)
 		} else {
 			h.logSecurity(r, audit.SecurityEvent{
 				UserID:   userID,

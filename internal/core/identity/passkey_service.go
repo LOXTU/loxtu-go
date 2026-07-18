@@ -3,7 +3,7 @@ package identity
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -336,7 +336,7 @@ func (s *PasskeyService) takeSession(challenge string) (*CeremonySession, error)
 
 // Logf is consistent passkey logging.
 func Logf(format string, args ...any) {
-	log.Printf("[passkey] "+format, args...)
+	slog.Info("[passkey] " + fmt.Sprintf(format, args...))
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────

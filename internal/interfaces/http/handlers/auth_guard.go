@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -71,13 +71,16 @@ func Guard(next http.Handler) http.Handler {
 
 		routerTenant := mw.GetTenantCode(r.Context())
 		if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
-			log.Printf("[guard] TENANT MISMATCH: JWT=%s Router=%s — blocking", claims.TenantID, routerTenant)
+			slog.Error("tenant mismatch, blocking", "jwt_tenant", claims.TenantID, "router_tenant", routerTenant)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
 		if lc := mw.GetLogCtx(r.Context()); lc != nil {
 			lc.TenantID = claims.TenantID
+			if c, err := r.Cookie("loxtu_email"); err == nil && c.Value != "" {
+				lc.Email = mw.MaskEmail(c.Value)
+			}
 		}
 
 		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)

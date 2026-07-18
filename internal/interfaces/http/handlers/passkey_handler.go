@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/a-h/templ"
@@ -60,6 +60,7 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	email := r.FormValue("email")
+	mw.SetLogEmail(r, email)
 	if email == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
 		return
@@ -133,6 +134,7 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := r.FormValue("email")
+	mw.SetLogEmail(r, email)
 	if email == "" {
 		if c, err := r.Cookie("loxtu_email"); err == nil {
 			email = c.Value
@@ -152,7 +154,7 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := h.tokens.IssueSession(r.Context(), userID, tenantID, "worker", nil)
 	if err != nil {
-		log.Printf("[passkey] skip IssueTokens: %v", err)
+		slog.Error("skip IssueTokens failed", "err", err)
 	} else {
 		setAuthCookies(w, pair)
 		http.SetCookie(w, &http.Cookie{
