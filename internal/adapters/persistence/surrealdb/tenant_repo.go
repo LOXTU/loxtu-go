@@ -19,10 +19,8 @@ func NewTenantRepo(pool *Pool) *TenantRepo {
 	return &TenantRepo{pool: pool, ControlNS: "loxtu", ControlDB: "loxtu"}
 }
 
-// ResolveByDomain maps domain → tenant.code via parameterized whitelist query.
+// ResolveByDomain maps domain → tenant.tenant_id via parameterized whitelist query.
 // Returns "" if domain not whitelisted.
-//
-// Control-plane schema: SELECT code FROM tenant WHERE $domain IN domain_whitelist
 func (r *TenantRepo) ResolveByDomain(ctx context.Context, domain string) (string, error) {
 	if r.pool == nil {
 		return "", nil
@@ -40,7 +38,7 @@ func (r *TenantRepo) ResolveByDomain(ctx context.Context, domain string) (string
 	}
 
 	res, err := r.pool.Query(ctx, ns, dbName,
-		"SELECT code FROM tenant WHERE $domain IN domain_whitelist LIMIT 1",
+		"SELECT tenant_id FROM tenant WHERE $domain IN domain_whitelist LIMIT 1",
 		map[string]any{"domain": domain},
 	)
 	if err != nil {
@@ -54,8 +52,8 @@ func (r *TenantRepo) ResolveByDomain(ctx context.Context, domain string) (string
 	if !ok {
 		return "", fmt.Errorf("unexpected row type: %T", rows[0])
 	}
-	if code, ok := rm["code"].(string); ok {
-		return code, nil
+	if tid, ok := rm["tenant_id"].(string); ok {
+		return tid, nil
 	}
 	return "", nil
 }
