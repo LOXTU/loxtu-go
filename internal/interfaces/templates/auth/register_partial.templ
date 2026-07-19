@@ -25,6 +25,7 @@ templ RegisterPartial(email string) {
 					hx-target="#auth-container"
 					hx-swap="outerHTML"
 					hx-vals={ `{"email":"` + email + `"}` }
+					hx-disable="true"
 				>
 					Skip for now
 				</button>

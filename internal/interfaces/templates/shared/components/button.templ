@@ -13,6 +13,7 @@ templ Button(variant string, typeAttr string, disabled bool, loading bool, fullW
 			templ.KV("btn--disabled", disabled),
 		}
 		disabled?={ disabled || loading }
+		hx-disable="true"
 	>
 		if loading {
 			<span class="ds-spinner ds-spinner--sm" aria-hidden="true"></span>

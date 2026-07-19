@@ -127,6 +127,7 @@ templ OTPBody(email string, boxClass string) {
 			hx-target="#auth-container"
 			hx-swap="outerHTML"
 			hx-vals={ fmt.Sprintf(`{"email":"%s"}`, email) }
+			hx-disable="true"
 		>
 			Resend code
 		</button>
