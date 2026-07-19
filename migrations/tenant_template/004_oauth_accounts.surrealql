@@ -12,12 +12,18 @@ DEFINE TABLE oauth_accounts SCHEMAFULL;
 DEFINE FIELD user_id ON oauth_accounts TYPE string;
     -- UUID владельца (ссылка на users.user_id).
 
+DEFINE FIELD tenant_id ON oauth_accounts TYPE string;
+    -- ID тенанта (для изоляции запросов).
+
 DEFINE FIELD provider ON oauth_accounts TYPE string;
     -- IdP: "google", "apple", "entra", "okta".
 
 DEFINE FIELD provider_sub ON oauth_accounts TYPE string;
     -- Уникальный ID пользователя в IdP (sub claim из OIDC).
     -- Сочетание (provider, provider_sub) уникально.
+
+DEFINE FIELD provider_email_hash ON oauth_accounts TYPE option<string>;
+    -- SHA-256(provider_email + pepper) для поиска по email в IdP.
 
 DEFINE FIELD created_at ON oauth_accounts TYPE datetime DEFAULT time::now();
     -- Время привязки аккаунта.

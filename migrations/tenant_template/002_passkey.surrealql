@@ -22,6 +22,9 @@ DEFINE FIELD handle ON passkey_users TYPE bytes;
     -- WebAuthn userHandle (бинарный UUID пользователя).
     -- Используется браузером для discoverable credentials.
 
+DEFINE FIELD created_at ON passkey_users TYPE datetime DEFAULT time::now();
+    -- Время создания записи (для аналитики, ротации).
+
 DEFINE INDEX idx_passkey_users_user_id ON passkey_users FIELDS user_id UNIQUE;
     -- Один пользователь = одна запись (уникальный handle).
 
