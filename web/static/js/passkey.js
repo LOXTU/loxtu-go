@@ -25,13 +25,6 @@
       if (email) registerPasskey(email);
       return;
     }
-    var skipBtn = e.target.closest('.js-skip-passkey');
-    if (skipBtn) {
-      e.preventDefault();
-      var email = skipBtn.getAttribute('data-email');
-      if (email) skipPasskey(email);
-      return;
-    }
     var signinBtn = e.target.closest('.js-signin-passkey');
     if (signinBtn) {
       e.preventDefault();
@@ -228,31 +221,6 @@
     }
   }
 
-  async function skipPasskey(email) {
-    console.log('[passkey] Skipping for', email);
-    var body = new URLSearchParams({ email: email });
-    var resp = await fetch('/auth/passkey/skip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body,
-    });
-    if (!resp.ok) {
-      console.error('[passkey] Skip failed');
-      return;
-    }
-    var redirectUrl = '/dashboard';
-    // Skip returns HX-Redirect header or JSON
-    var hxRedirect = resp.headers.get('HX-Redirect');
-    if (hxRedirect) {
-      redirectUrl = hxRedirect;
-    } else {
-      try {
-        var data = await resp.json();
-        redirectUrl = data.redirect || '/dashboard';
-      } catch (e) {}
-    }
-    window.location.href = redirectUrl;
-  }
 
   // ── Helpers ──
 

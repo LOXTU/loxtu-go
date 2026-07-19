@@ -30,7 +30,11 @@ templ pageBody(email string) {
 					<button type="button" class="btn btn-primary btn-auth js-register-passkey" data-email={ email }>
 						Register passkey
 					</button>
-					<button type="button" class="btn btn-secondary js-skip-passkey" data-email={ email }>
+					<button type="button" class="btn btn-secondary js-skip-passkey" data-email={ email }
+					hx-post="/auth/passkey/skip"
+					hx-target="#auth-container"
+					hx-swap="outerHTML"
+					hx-vals={ `{"email":"` + email + `"}` }>
 						Skip for now
 					</button>
 				</div>

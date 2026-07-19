@@ -21,6 +21,10 @@ templ RegisterPartial(email string) {
 					type="button"
 					class="btn btn-secondary js-skip-passkey"
 					data-email={ email }
+					hx-post="/auth/passkey/skip"
+					hx-target="#auth-container"
+					hx-swap="outerHTML"
+					hx-vals={ `{"email":"` + email + `"}` }
 				>
 					Skip for now
 				</button>
