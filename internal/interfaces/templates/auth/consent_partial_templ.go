@@ -141,7 +141,7 @@ func ConsentPartial(email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<script>\n\t\t\t\t\tdocument.getElementById('consent-form').addEventListener('change', function () {\n\t\t\t\t\t\tvar all = document.querySelectorAll('.consent-checkbox:checked').length === 3;\n\t\t\t\t\t\tdocument.getElementById('accept-btn').disabled = !all;\n\t\t\t\t\t});\n\t\t\t\t</script><button id=\"accept-btn\" type=\"submit\" class=\"btn btn-primary w-full\" disabled>Accept All</button></div></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<script>\n\t\t\t\t\tdocument.getElementById('consent-form').addEventListener('change', function () {\n\t\t\t\t\t\tvar all = document.querySelectorAll('.consent-checkbox:checked').length === 3;\n\t\t\t\t\t\tdocument.getElementById('accept-btn').disabled = !all;\n\t\t\t\t\t});\n\t\t\t\t</script><button id=\"accept-btn\" type=\"submit\" class=\"btn btn-primary w-full\" disabled hx-disable=\"true\">Accept All</button></div></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
