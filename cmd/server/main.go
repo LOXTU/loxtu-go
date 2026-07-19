@@ -193,7 +193,7 @@ func main() {
 
 	// Protected dashboard
 	r.Group(func(r chi.Router) {
-		r.Use(handlers.Guard)
+		r.Use(handlers.Guard(users))
 		dashH.Mount(r)
 	})
 

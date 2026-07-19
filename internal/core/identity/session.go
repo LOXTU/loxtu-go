@@ -53,7 +53,8 @@ func signingKey() []byte {
 }
 
 // IssueAccessToken creates a short-lived HS256 JWT for the given identity.
-// UserIDHash = SHA-256(userID) for PII protection — raw UUID never leaves the server.
+// UserIDHash = SHA-256(userID) for PII protection — raw UUID never leaves JWT.
+// Guard looks up the raw UUID from the user record by this hash on each request.
 func IssueAccessToken(userID, tenantID, role string, permissions []string, ttl time.Duration) (string, error) {
 	userIDHash := fmt.Sprintf("%x", sha256.Sum256([]byte(userID)))
 	now := time.Now()

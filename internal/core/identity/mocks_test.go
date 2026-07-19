@@ -31,6 +31,14 @@ func (m *mockUserStore) FindByEmailHash(_ context.Context, hash string) (*identi
 	}
 	return nil, nil
 }
+func (m *mockUserStore) FindByUserIDHash(_ context.Context, hash string) (*identity.User, error) {
+	for _, u := range m.users {
+		if u.UserIDHash == hash {
+			return u, nil
+		}
+	}
+	return nil, nil
+}
 func (m *mockUserStore) Update(_ context.Context, u *identity.User) error {
 	m.users[u.UserID] = u
 	return nil

@@ -18,7 +18,8 @@ import (
 // PII fields are stored encrypted (envelope encryption: DEK encrypted by KEK).
 type User struct {
 	// Identifiers
-	UserID   string // UUID v7, generated in Go
+	UserID   string // UUID v7, generated in Go, primary key
+	UserIDHash string // SHA-256(UserID), unique index for GDPR-safe JWT sub claim
 	TenantID string // tenant code (was TenantNS/ActorID)
 	Status   string // pending | active | suspended | erased
 

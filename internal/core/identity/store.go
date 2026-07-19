@@ -9,6 +9,7 @@ type UserStore interface {
 	Create(ctx context.Context, user *User) error
 	FindByUserID(ctx context.Context, userID string) (*User, error)
 	FindByEmailHash(ctx context.Context, emailHash string) (*User, error)
+	FindByUserIDHash(ctx context.Context, hash string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	Erase(ctx context.Context, userID string) error // crypto-shredding
 }

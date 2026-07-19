@@ -2,6 +2,8 @@ package surrealdb
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"time"
@@ -37,6 +39,11 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 	if user.UserID == "" {
 		user.UserID = uuid.New().String()
 	}
+	// Compute user_id_hash from UUID (deterministic, PII-safe JWT sub claim)
+	if user.UserIDHash == "" {
+		hash := sha256.Sum256([]byte(user.UserID))
+		user.UserIDHash = hex.EncodeToString(hash[:])
+	}
 
 	// Generate DEK
 	dek, encDEK, err := r.keyManager.GenerateAndEncryptDEK()
@@ -56,6 +63,7 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 
 	vars := map[string]any{
 		"user_id":         user.UserID,
+		"user_id_hash":    user.UserIDHash,
 		"tenant_id":       user.TenantID,
 		"status":          user.Status,
 		"encrypted_dek":   encDEK,
@@ -211,6 +219,32 @@ func (r *UserRepository) FindByEmailHash(ctx context.Context, emailHash string) 
 	return mapUserRowV2(rm), nil
 }
 
+// FindByUserIDHash loads a user by user_id_hash (SHA-256 of UUID) for JWT→UUID resolution.
+func (r *UserRepository) FindByUserIDHash(ctx context.Context, hash string) (*identity.User, error) {
+	if r.pool == nil {
+		return nil, fmt.Errorf("db not connected")
+	}
+	if hash == "" {
+		return nil, nil
+	}
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
+		"SELECT * FROM users WHERE user_id_hash = $hash LIMIT 1",
+		map[string]any{"hash": hash},
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows := firstRows(results)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	rm, ok := rows[0].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	return mapUserRowV2(rm), nil
+}
+
 // Update persists changes to an existing user.
 func (r *UserRepository) Update(ctx context.Context, user *identity.User) error {
 	if r.pool == nil {
@@ -297,6 +331,9 @@ func mapUserRowV2(rm map[string]any) *identity.User {
 	// Identifiers
 	if v, ok := rm["user_id"].(string); ok {
 		u.UserID = v
+	}
+	if v, ok := rm["user_id_hash"].(string); ok {
+		u.UserIDHash = v
 	}
 	if v, ok := rm["tenant_id"].(string); ok {
 		u.TenantID = v

@@ -1,10 +1,9 @@
 -- ==================================================================
 -- ФАЙЛ:    tenant_template/001_users.surrealql
--- КУДА:    NS=<tenant_id>, DB=<tenant_id> (loxtu, aerlingus, public etc.)
--- АГЕНТУ:  Ядро системы. Хранит идентификацию, PII (в зашифрованном
---          виде через Envelope Encryption), RBAC и lifecycle-статус.
---          user_id — единый идентификатор пользователя ВЕЗДЕ в системе.
---          НЕ содержит методов аутентификации (они в отдельных таблицах).
+-- КУДА:    NS=<tenant_id>, DB=<tenant_id> (loxtu, aerlingus, public)
+-- АГЕНТУ:  Ядро Data Plane тенанта. Хранит идентификацию, PII
+--          (через Envelope Encryption), RBAC и lifecycle-статус.
+--          user_id_hash используется для stateless-флоу аутентификации.
 -- ==================================================================
 
 DEFINE TABLE users SCHEMAFULL;
@@ -12,67 +11,67 @@ DEFINE TABLE users SCHEMAFULL;
 -- ── Идентификация ────────────────────────────────────────────────
 DEFINE FIELD user_id ON users TYPE string;
     -- Единый идентификатор пользователя (UUID v7).
-    -- Используется ВЕЗДЕ: в JWT, в логах, в других таблицах.
+    -- Используется ВЕЗДЕ внутри системы: в JWT, логах, других таблицах.
+    -- НЕ передаётся фронтенду (PII).
     -- Формат: "550e8400-e29b-41d4-a716-446655440000".
-    -- В JWT маппится на claim "user_id".
+
+DEFINE FIELD user_id_hash ON users TYPE string;
+    -- SHA-256(user_id + pepper) для stateless-передачи фронтенду.
+    -- Используется вместо user_id во флоу аутентификации (OTP/verify/consent).
+    -- Pepper — секретный ключ из ENV (LOXTU_HASH_PEPPER).
+    -- Фронтенд сохраняет это в sessionStorage и передаёт на каждом шаге.
 
 DEFINE FIELD tenant_id ON users TYPE string;
     -- ID тенанта, которому принадлежит пользователь.
     -- Совпадает с tenant_id из control_plane.tenant.
-    -- Пример: "loxtu", "aerlingus".
+    -- Пример: "loxtu", "aerlingus", "public".
 
 -- ── Lifecycle и статусы ──────────────────────────────────────────
 DEFINE FIELD status ON users TYPE string DEFAULT 'pending';
-    -- Жизненный цикл пользователя.
-    -- "pending"   — начал регистрацию, не завершил (можно отправить reminder).
-    -- "active"    — полностью зарегистрирован, может входить.
-    -- "suspended" — временно заблокирован (админом или системой).
-    -- "erased"    — GDPR Article 17, PII уничтожена через crypto-shredding.
+    -- Жизненный цикл пользователя:
+    -- "pending"   — начал регистрацию, не завершил
+    -- "active"    — полностью зарегистрирован, может входить
+    -- "suspended" — временно заблокирован
+    -- "erased"    — GDPR Article 17, PII уничтожена
 
 DEFINE FIELD registration_attempts ON users TYPE int DEFAULT 0;
-    -- Счётчик попыток завершить регистрацию (статистика, НЕ rate limit).
-    -- Инкрементируется при каждом запросе OTP/Passkey регистрации.
+    -- Счётчик попыток завершить регистрацию (аналитика).
 
 DEFINE FIELD login_count ON users TYPE int DEFAULT 0;
-    -- Общее количество успешных входов (аналитика).
+    -- Общее количество успешных входов.
 
 DEFINE FIELD failed_login_count ON users TYPE int DEFAULT 0;
-    -- Счётчик неудачных попыток входа (для NIS2: блокировка после N попыток).
+    -- Счётчик неудачных попыток входа (NIS2: блокировка после N попыток).
 
 DEFINE FIELD last_login_at ON users TYPE option<datetime>;
     -- Время последнего успешного входа.
-    -- Используется для обнаружения неактивных аккаунтов.
 
 DEFINE FIELD locked_until ON users TYPE option<datetime>;
-    -- Временная блокировка после N неудачных попыток (NIS2).
-    -- Если NULL — пользователь не заблокирован.
+    -- Временная блокировка после N неудачных попыток.
 
 DEFINE FIELD hire_date ON users TYPE option<datetime>;
-    -- Дата найма (для интеграции с HR, срок действия аккаунта).
+    -- Дата найма (для интеграции с HR).
 
--- ── Lookup и маскирование (для поиска и логов) ───────────────────
+-- ── Lookup и маскирование ────────────────────────────────────────
 DEFINE FIELD email_hash ON users TYPE string;
     -- SHA-256(email + pepper) для БЫСТРОГО поиска по email.
-    -- Pepper — секретный ключ из ENV (LOXTU_HASH_PEPPER).
-    -- При crypto-shredding (статус "erased") перезаписывается на rand::string(32).
+    -- Используется на шаге /auth/otp/send для нахождения/создания пользователя.
+    -- При crypto-shredding перезаписывается на rand::string(32).
 
 DEFINE FIELD masked_email ON users TYPE option<string>;
     -- Замаскированный email для UI и логов: "v***v@loxtu.com".
-    -- НЕ шифруется (считается анонимизированными данными по GDPR).
-    -- Хранится для быстрого отображения без расшифровки ciphertext.
+    -- НЕ шифруется (анонимизированные данные по GDPR).
 
 -- ── Envelope Encryption (GDPR Art. 17 — Crypto-Shredding) ────────
 DEFINE FIELD encrypted_dek ON users TYPE option<bytes>;
     -- Data Encryption Key (DEK), зашифрованный мастер-ключом (KEK).
     -- KEK хранится в ENV (LOXTU_DATA_KEY).
     -- Уникален для КАЖДОГО пользователя.
-    -- При удалении пользователя (GDPR) это поле уничтожается →
-    -- ВСЕ ciphertext'ы становятся нечитаемым мусором (включая бэкапы).
+    -- При удалении пользователя уничтожается → все ciphertext'ы нечитаемы.
 
 -- ── PII (Encrypted через AES-256-GCM с DEK) ──────────────────────
 DEFINE FIELD email_ciphertext ON users TYPE option<bytes>;
-    -- Зашифрованный email. Нужен для: отправки OTP, GDPR Art. 20 (экспорт),
-    -- интеграций с внешними системами.
+    -- Зашифрованный email.
 
 DEFINE FIELD name_ciphertext ON users TYPE option<bytes>;
     -- Зашифрованное имя.
@@ -81,26 +80,23 @@ DEFINE FIELD surname_ciphertext ON users TYPE option<bytes>;
     -- Зашифрованная фамилия.
 
 DEFINE FIELD phone_ciphertext ON users TYPE option<bytes>;
-    -- Зашифрованный мобильный номер (устанавливается позже админом/юзером).
+    -- Зашифрованный мобильный номер.
 
 DEFINE FIELD dob_ciphertext ON users TYPE option<bytes>;
-    -- Зашифрованная дата рождения (PII).
+    -- Зашифрованная дата рождения.
 
 DEFINE FIELD employee_id_ciphertext ON users TYPE option<bytes>;
-    -- Зашифрованный табельный номер (PII, интеграция с HR).
+    -- Зашифрованный табельный номер.
 
 DEFINE FIELD employee_id_hash ON users TYPE option<string>;
     -- SHA-256(employee_id + pepper) для поиска по табельному номеру.
-    -- Опционально, заполняется если нужна уникальная идентификация по employee_id.
 
--- ── RBAC (Role-Based Access Control) ─────────────────────────────
+-- ── RBAC ─────────────────────────────────────────────────────────
 DEFINE FIELD role ON users TYPE option<string>;
-    -- Роль пользователя: "handler", "supervisor", "admin", "dispatcher".
-    -- Определяет базовый набор permissions.
+    -- Роль: "handler", "supervisor", "admin", "dispatcher".
 
 DEFINE FIELD permissions ON users TYPE option<array<string>>;
-    -- Явные разрешения: ["flights.read", "turnaround.write", "roster.admin"].
-    -- Переопределяют или дополняют роль.
+    -- Явные разрешения: ["flights.read", "turnaround.write"].
 
 -- ── Организационная структура ────────────────────────────────────
 DEFINE FIELD department ON users TYPE option<string>;
@@ -114,23 +110,27 @@ DEFINE FIELD base ON users TYPE option<string>;
 
 DEFINE FIELD skills ON users TYPE option<array<string>>;
     -- Квалификации: ["pushback", "chocks", "belt_loader"].
-    -- Используется в roster-модуле для назначения на рейсы.
 
--- ── Индексы ──────────────────────────────────────────────────────
+-- ── Timestamps ───────────────────────────────────────────────────
 DEFINE FIELD created_at ON users TYPE datetime DEFAULT time::now();
-    -- Время создания записи (для ротации токенов, аналитики, GDPR retention).
+    -- Время создания записи.
 
 DEFINE FIELD updated_at ON users TYPE datetime DEFAULT time::now();
-    -- Время последнего обновления (для аудита, cache invalidation).
+    -- Время последнего обновления.
 
+-- ── Индексы ──────────────────────────────────────────────────────
 DEFINE INDEX idx_users_user_id ON users FIELDS user_id UNIQUE;
-    -- Основной индекс по UUID.
+    -- Основной индекс по UUID (внутренний).
+
+DEFINE INDEX idx_users_user_id_hash ON users FIELDS user_id_hash UNIQUE;
+    -- Для stateless-поиска по хэшу (фронтенд передаёт этот хэш).
 
 DEFINE INDEX idx_users_email_hash ON users FIELDS email_hash UNIQUE;
-    -- Для поиска пользователя по email при входе.
+    -- Для поиска по email при входе (шаг /auth/otp/send).
+    -- Защищает от DoS-атак (UNIQUE constraint).
 
 DEFINE INDEX idx_users_tenant_id ON users FIELDS tenant_id;
-    -- Для агрегации пользователей по тенанту (админка).
+    -- Для агрегации пользователей по тенанту.
 
 DEFINE INDEX idx_users_employee_id_hash ON users FIELDS employee_id_hash UNIQUE;
-    -- Для поиска по табельному номеру (HR-интеграции).
+    -- Для поиска по табельному номеру.

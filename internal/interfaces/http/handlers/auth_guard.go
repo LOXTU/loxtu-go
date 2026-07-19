@@ -8,6 +8,7 @@ import (
 
 	"github.com/loxtu/loxtu-go/internal/core/identity"
 	mw "github.com/loxtu/loxtu-go/internal/interfaces/http/middleware"
+	"github.com/loxtu/loxtu-go/internal/security"
 )
 
 // Claim keys in context (typed string keys scoped to handlers package).
@@ -49,57 +50,73 @@ func IsPublicPath(path string) bool {
 	return path == "/"
 }
 
-// Guard validates access JWT and injects tenant_id + user_id_hash into context.
+// Guard validates access JWT, resolves raw UserID from user_id_hash,
+// and injects tenant_id + user_id into context.
 // TenantID is set from JWT claims (signed server-side, no external resolution needed).
-func Guard(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if IsPublicPath(path) {
-			next.ServeHTTP(w, r)
-			return
-		}
+// Raw UUID is looked up from the tenant's user record by user_id_hash (GDPR-safe).
+func Guard(users identity.UserStore) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			if IsPublicPath(path) {
+				next.ServeHTTP(w, r)
+				return
+			}
 
-		cookie, err := r.Cookie("loxtu_access")
-		if err != nil {
-			unauthorized(w, r)
-			return
-		}
-		claims, err := identity.ValidateAccessToken(cookie.Value)
-		if err != nil {
-			unauthorized(w, r)
-			return
-		}
+			cookie, err := r.Cookie("loxtu_access")
+			if err != nil {
+				unauthorized(w, r)
+				return
+			}
+			claims, err := identity.ValidateAccessToken(cookie.Value)
+			if err != nil {
+				unauthorized(w, r)
+				return
+			}
 
-		// No TenantRouter middleware anymore — tenant comes exclusively from JWT.
-		routerTenant := mw.GetTenantID(r.Context())
-		if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
-			slog.Error("tenant mismatch, blocking", "jwt_tenant", claims.TenantID, "router_tenant", routerTenant)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
+			// No TenantRouter middleware anymore — tenant comes exclusively from JWT.
+			routerTenant := mw.GetTenantID(r.Context())
+			if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
+				slog.Error("tenant mismatch, blocking", "jwt_tenant", claims.TenantID, "router_tenant", routerTenant)
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
 
-		if lc := mw.GetLogCtx(r.Context()); lc != nil {
-			lc.TenantID = claims.TenantID
-		}
+			if lc := mw.GetLogCtx(r.Context()); lc != nil {
+				lc.TenantID = claims.TenantID
+			}
 
-		// Inject tenant_id and user_id_hash into context (the only source of truth).
-		ctx := r.Context()
-		if claims.TenantID != "" {
-			ctx = context.WithValue(ctx, identity.TenantIDKey, claims.TenantID)
-		}
-		if claims.UserIDHash != "" {
-			ctx = context.WithValue(ctx, identity.UserIDHashKey, claims.UserIDHash)
-		}
-		ctx = context.WithValue(ctx, ctxUserID, claims.Subject) // user_id_hash as sub
-		ctx = context.WithValue(ctx, ctxRole, claims.Role)
-		// Email stored in cookie (loxtu_email), resolved at use site
+			// Resolve raw UserID from user_id_hash (JWT → DB lookup)
+			rawUserID := claims.Subject // fallback: use hash if DB lookup fails
+			if users != nil && claims.UserIDHash != "" {
+				u, err := users.FindByUserIDHash(r.Context(), claims.UserIDHash)
+				if err == nil && u != nil && u.UserID != "" {
+					rawUserID = u.UserID
+				} else {
+					slog.Warn("Guard: user not found by user_id_hash, using hash as fallback",
+						"user_id_hash", security.MaskEmail(claims.UserIDHash))
+				}
+			}
 
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
+			// Inject tenant_id and raw UserID into context
+			ctx := r.Context()
+			if claims.TenantID != "" {
+				ctx = context.WithValue(ctx, identity.TenantIDKey, claims.TenantID)
+			}
+			if claims.UserIDHash != "" {
+				ctx = context.WithValue(ctx, identity.UserIDHashKey, claims.UserIDHash)
+			}
+			ctx = context.WithValue(ctx, ctxUserID, rawUserID)
+			ctx = context.WithValue(ctx, ctxRole, claims.Role)
+			// Email stored in cookie (loxtu_email), resolved at use site
 
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 func unauthorized(w http.ResponseWriter, r *http.Request) {

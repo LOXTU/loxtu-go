@@ -63,6 +63,17 @@ func (m *mockUserStore) FindByUserID(_ context.Context, userID string) (*identit
 	return nil, errors.New("not found")
 }
 
+func (m *mockUserStore) FindByUserIDHash(_ context.Context, hash string) (*identity.User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, u := range m.users {
+		if u.UserIDHash == hash {
+			return u, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
 func (m *mockUserStore) Update(ctx context.Context, u *identity.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
