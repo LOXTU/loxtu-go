@@ -3,6 +3,7 @@ package surrealdb
 import (
 	"context"
 	"encoding/base64"
+	"strings"
 	"fmt"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -68,16 +69,19 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 		return fmt.Errorf("nil credential")
 	}
 
+	// Escape all string values for SQL injection safety
+	userID := strings.ReplaceAll(cred.UserID, "'", "''")
 	kidB64 := base64.RawURLEncoding.EncodeToString(cred.CredentialID)
 	pkB64 := base64.RawURLEncoding.EncodeToString(cred.PublicKey)
+	aaguid := strings.ReplaceAll(cred.AAGUID, "'", "''")
 
 	// Separate DELETE and CREATE — multi-statement not supported by SDK + SurrealDB 3.2.0
 	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
-		fmt.Sprintf("DELETE passkey_credentials WHERE user_id = '%s'", cred.UserID), nil)
+		fmt.Sprintf("DELETE passkey_credentials WHERE user_id = '%s'", userID), nil)
 
 	query := fmt.Sprintf(
 		"CREATE passkey_credentials SET user_id = '%s', kid = '%s', public_key = '%s', sign_count = %d, transports = [], aaguid = '%s', backup_eligible = %v, backup_state = %v",
-		cred.UserID, kidB64, pkB64, cred.SignCount, cred.AAGUID, cred.BackupEligible, cred.BackupState,
+		userID, kidB64, pkB64, cred.SignCount, aaguid, cred.BackupEligible, cred.BackupState,
 	)
 	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB, query, nil)
 	return err

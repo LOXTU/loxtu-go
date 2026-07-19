@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -137,7 +138,7 @@ func (s *PasskeyService) SaveCredential(ctx context.Context, userID string, cred
 		PublicKey:      cred.PublicKey,
 		SignCount:      cred.Authenticator.SignCount,
 		Transports:     transportStrings(cred.Transport),
-		AAGUID:         string(cred.Authenticator.AAGUID),
+		AAGUID:         hex.EncodeToString(cred.Authenticator.AAGUID),
 		BackupEligible: cred.Flags.BackupEligible,
 		BackupState:    cred.Flags.BackupState,
 		CreatedAt:      time.Now(),
