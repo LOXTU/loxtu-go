@@ -38,7 +38,7 @@ func (h *OAuthHandler) BeginAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve tenant from email domain or query param
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
 		redirectURI = "/dashboard"
@@ -105,11 +105,11 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve tenant from email domain
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	if tenantID == "" || tenantID == "public" {
 		if domain := emailDomain(info.Email); domain != "" {
 			// Tenant resolution happens via middleware
-			tenantID = mw.GetTenantCode(r.Context())
+			tenantID = mw.GetTenantID(r.Context())
 		}
 	}
 	if tenantID == "" {

@@ -69,7 +69,7 @@ func Guard(next http.Handler) http.Handler {
 			return
 		}
 
-		routerTenant := mw.GetTenantCode(r.Context())
+		routerTenant := mw.GetTenantID(r.Context())
 		if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
 			slog.Error("tenant mismatch, blocking", "jwt_tenant", claims.TenantID, "router_tenant", routerTenant)
 			http.Error(w, "forbidden", http.StatusForbidden)

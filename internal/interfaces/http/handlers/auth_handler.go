@@ -196,7 +196,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		_ = h.rl.Reset(r.Context(), identity.RateKeyOTPFail(email))
 	}
 
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	if tenantID == "" {
 		tenantID = "public"
 	}
@@ -266,7 +266,7 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	if tenantID == "" {
 		tenantID = "public"
 	}

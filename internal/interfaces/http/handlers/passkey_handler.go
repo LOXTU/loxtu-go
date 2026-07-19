@@ -60,7 +60,7 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
 		return
 	}
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantID)
 	if err != nil {
 		identity.Logf("ERROR BeginRegistration: %v", err)
@@ -94,7 +94,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 
 	tenantID := user.TenantID
 	if tenantID == "" {
-		tenantID = mw.GetTenantCode(r.Context())
+		tenantID = mw.GetTenantID(r.Context())
 	}
 
 	if h.audit != nil {
@@ -129,7 +129,7 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
 
 	// Find user to get userID
@@ -148,7 +148,7 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	if email == "" {
 		options, challenge, err := h.passkey.BeginLoginDiscoverable(r.Context(), tenantID)
 		if err != nil {
@@ -184,7 +184,7 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := user.TenantID
 	if tenantID == "" {
-		tenantID = mw.GetTenantCode(r.Context())
+		tenantID = mw.GetTenantID(r.Context())
 	}
 	identity.Logf("Login successful for user=%s in tenant=%s", user.UserID, tenantID)
 	pair, err := h.tokens.IssueSession(r.Context(), user.UserID, tenantID, "worker", nil)

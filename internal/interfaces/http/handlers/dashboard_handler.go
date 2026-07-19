@@ -108,7 +108,7 @@ type DashboardData struct {
 
 // getDashboardData returns tenant-aware bento cards.
 func (h *DashboardHandler) getDashboardData(r *http.Request) DashboardData {
-	tenantID := mw.GetTenantCode(r.Context())
+	tenantID := mw.GetTenantID(r.Context())
 	if tenantID == "" {
 		tenantID = "public"
 	}

@@ -202,7 +202,7 @@ func (p *Pool) CreateRecord(ctx context.Context, ns, dbName, table string, data 
 
 // TenantNS returns the tenant-specific namespace/db from context, or default.
 func (p *Pool) TenantNS(ctx context.Context) string {
-	if v := ctx.Value("tenant_code"); v != nil {
+	if v := ctx.Value("tenant_id"); v != nil {
 		if code, ok := v.(string); ok && code != "" {
 			return code
 		}

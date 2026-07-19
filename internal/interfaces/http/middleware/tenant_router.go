@@ -13,9 +13,9 @@ import (
 	"strings"
 )
 
-const TenantCtxKey ctxKey = "tenant_code"
+const TenantCtxKey ctxKey = "tenant_id"
 
-func GetTenantCode(ctx context.Context) string {
+func GetTenantID(ctx context.Context) string {
 	v, _ := ctx.Value(TenantCtxKey).(string)
 	return v
 }
@@ -45,8 +45,8 @@ func NewTenantRouter(resolver TenantResolver) func(http.Handler) http.Handler {
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			tenantCode := resolveTenantCode(r, resolver)
-			ctx := context.WithValue(r.Context(), TenantCtxKey, tenantCode)
+			tenantID := resolveTenantID(r, resolver)
+			ctx := context.WithValue(r.Context(), TenantCtxKey, tenantID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -57,7 +57,7 @@ func TenantRouter(next http.Handler) http.Handler {
 	return NewTenantRouter(tenantResolver)(next)
 }
 
-func resolveTenantCode(r *http.Request, resolver TenantResolver) string {
+func resolveTenantID(r *http.Request, resolver TenantResolver) string {
 	// Priority 1: JWT (authenticated requests)
 	if claims := getJWTClaims(r); claims != nil && claims.TenantID != "" {
 		return claims.TenantID
