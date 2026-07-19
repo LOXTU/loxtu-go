@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/loxtu/loxtu-go/internal/core/identity"
@@ -22,6 +23,7 @@ func NewSessionRepo(pool *Pool) *SessionRepo {
 var _ identity.SessionStore = (*SessionRepo)(nil)
 
 // Create persists a new session (revokes prior for same user first).
+// UNIQUE index on sessions.user_id prevents race-condition duplicates.
 func (r *SessionRepo) Create(ctx context.Context, session *identity.Session) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
@@ -40,6 +42,12 @@ func (r *SessionRepo) Create(ctx context.Context, session *identity.Session) err
 		},
 	)
 	if err != nil {
+		// UNIQUE constraint violation (race condition: another request created
+		// a session between our DELETE and CREATE). Existing session is valid.
+		if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "UNIQUE") {
+			log.Printf("[session] SESSION: race condition — duplicate session for %s, existing kept", session.UserID)
+			return nil
+		}
 		return fmt.Errorf("create session: %w", err)
 	}
 	return nil
