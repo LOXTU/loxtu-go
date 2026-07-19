@@ -3,6 +3,7 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/loxtu/loxtu-go/internal/core/identity"
@@ -29,6 +30,7 @@ func (r *SessionRepo) Create(ctx context.Context, session *identity.Session) err
 	if session.UserID != "" {
 		_ = r.RevokeByUserID(ctx, session.UserID)
 	}
+	log.Printf("[session] SESSION: Creating session user_id=%s tenant=%s", session.UserID, r.pool.TenantNS(ctx))
 	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE sessions SET user_id = $uid, token_hash = $hash, expires_at = time::from_unix($expires), created_at = time::now()`,
 		map[string]any{

@@ -99,7 +99,7 @@ func (r *AuditRepo) writeSecurity(ev audit.SecurityEvent) {
 	// Resolve tenant_id — prefer v2 field, fallback to legacy
 	tenantID := ev.TenantID
 	if tenantID == "" {
-		tenantID = "loxtu" // fallback
+		tenantID = "public" // fallback
 	}
 
 	// Resolve user_id — prefer v2 field

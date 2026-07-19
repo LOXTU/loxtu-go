@@ -3,6 +3,7 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -117,6 +118,8 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 	}
 
 	_ = dek // used for encryption above
+
+	log.Printf("[user_repo] USER_REPO: Creating user ctx_tenant_id=%s user_tenant_id=%s", identity.GetTenantID(ctx), user.TenantID)
 
 	_, err = r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE users SET

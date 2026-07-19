@@ -46,6 +46,7 @@ func NewTenantRouter(resolver TenantResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tenantID := resolveTenantID(r, resolver)
+			log.Printf("[tenant] MIDDLEWARE: Resolved tenant_id=%s domain=%s", tenantID, requestHost(r))
 			ctx := context.WithValue(r.Context(), identity.TenantIDKey, tenantID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

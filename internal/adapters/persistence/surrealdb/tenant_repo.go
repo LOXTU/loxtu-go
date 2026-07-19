@@ -32,10 +32,10 @@ func (r *TenantRepo) ResolveByDomain(ctx context.Context, domain string) (string
 	}
 	ns, dbName := r.ControlNS, r.ControlDB
 	if ns == "" {
-		ns = "loxtu"
+		ns = "control_plane"
 	}
 	if dbName == "" {
-		dbName = "loxtu"
+		dbName = "control_plane"
 	}
 
 	res, err := r.pool.Query(ctx, ns, dbName,
@@ -66,10 +66,10 @@ func (r *TenantRepo) GetByTenantID(ctx context.Context, tenantID string) (*ident
 	}
 	ns, dbName := r.ControlNS, r.ControlDB
 	if ns == "" {
-		ns = "loxtu"
+		ns = "control_plane"
 	}
 	if dbName == "" {
-		dbName = "loxtu"
+		dbName = "control_plane"
 	}
 	res, err := r.pool.Query(ctx, ns, dbName,
 		"SELECT * FROM tenant WHERE tenant_id = $tid LIMIT 1",

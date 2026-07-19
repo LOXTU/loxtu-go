@@ -140,6 +140,8 @@ func (p *Pool) Query(ctx context.Context, ns, dbName, sql string, vars map[strin
 		return nil, fmt.Errorf("use ns=%s db=%s: %w", ns, dbName, err)
 	}
 
+	log.Printf("[pool] POOL: Query target_ns=%s target_db=%s sql=%.80s", ns, dbName, sql)
+
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
