@@ -5,5 +5,6 @@ DEFINE FIELD expires_at ON otp_codes TYPE datetime;
 
 -- Auto-cleanup expired OTP codes on any write activity
 DEFINE EVENT delete_expired_otp ON otp_codes WHEN $event = "CREATE" OR $event = "UPDATE" THEN {
-    REMOVE otp_codes WHERE expires_at < time::now();
+    -- Исправлено: REMOVE заменен на DELETE
+    DELETE otp_codes WHERE expires_at < time::now();
 };
