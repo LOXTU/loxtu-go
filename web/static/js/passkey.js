@@ -131,7 +131,7 @@
       }
       var assertion = await navigator.credentials.get({ publicKey: options.publicKey });
       var encoded = encodeAssertion(assertion);
-      var finishResp = await fetch('/auth/passkey/login/finish', {
+      var finishResp = await fetch('/auth/passkey/login/finish?email=' + encodeURIComponent(email), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(encoded),
       });
@@ -196,7 +196,7 @@
 
       // Step 4: encode and send to finish
       var attestation = encodeAttestation(credential);
-      var finishResp = await fetch('/auth/passkey/finish', {
+      var finishResp = await fetch('/auth/passkey/finish?email=' + encodeURIComponent(email), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(attestation),

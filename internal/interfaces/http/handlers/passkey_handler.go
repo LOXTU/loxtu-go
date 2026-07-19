@@ -147,7 +147,7 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name: "pre_auth_tenant", Value: tenantID,
 		Path: "/", MaxAge: 60,
-		HttpOnly: false, Secure: true,
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 	})
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)

@@ -407,6 +407,7 @@ func clearAuthCookies(w http.ResponseWriter) {
 
 func clearTempAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pre_auth_tenant", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
 // emailDomain extracts the domain part of an email address.
