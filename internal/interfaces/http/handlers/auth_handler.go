@@ -2,10 +2,8 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -144,13 +142,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		userID = newUser.UserID
 	}
 
-	// Set pre-auth cookies (minimal — just for OTP verify flow)
-	cookieVal := fmt.Sprintf(`{"email":"%s","tenant_id":"%s"}`, email, tenantID)
-	http.SetCookie(w, &http.Cookie{
-		Name: "pre_auth_state", Value: url.QueryEscape(cookieVal),
-		Path: "/", MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
-	// NO loxtu_tenant cookie — tenant resolved from email domain on every request
+	// No pre-auth cookie — tenant resolved from email domain on every request
 
 	h.logSecurity(r, audit.SecurityEvent{
 		UserID:      userID,
@@ -395,13 +387,21 @@ func (h *AuthHandler) logSecurity(r *http.Request, ev audit.SecurityEvent) {
 }
 
 func setAuthCookies(w http.ResponseWriter, pair identity.TokenPair) {
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_access", Value: pair.AccessToken, Path: "/", MaxAge: 900, HttpOnly: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_refresh", Value: pair.RefreshPlain, Path: "/", MaxAge: 86400 * 30, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{
+		Name: "loxtu_access", Value: pair.AccessToken,
+		Path: "/", MaxAge: 900,
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name: "loxtu_refresh", Value: pair.RefreshPlain,
+		Path: "/", MaxAge: 86400 * 30,
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func clearAuthCookies(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_access", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "loxtu_refresh", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "loxtu_access", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true})
+	http.SetCookie(w, &http.Cookie{Name: "loxtu_refresh", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true})
 	clearTempAuthCookies(w)
 }
 

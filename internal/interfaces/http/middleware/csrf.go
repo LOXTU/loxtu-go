@@ -55,7 +55,7 @@ func CSRF(publicPaths []string) func(http.Handler) http.Handler {
 					Path:     "/",
 					HttpOnly: false,
 					SameSite: http.SameSiteLaxMode,
-					Secure:   false,
+					Secure:   true,
 				})
 				next.ServeHTTP(w, r)
 				return
@@ -108,7 +108,7 @@ func CSRF(publicPaths []string) func(http.Handler) http.Handler {
 					Path:     "/",
 					HttpOnly: false,
 					SameSite: http.SameSiteLaxMode,
-					Secure:   false,
+					Secure:   true,
 				})
 			}
 

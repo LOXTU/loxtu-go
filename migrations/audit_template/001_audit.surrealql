@@ -39,7 +39,7 @@ DEFINE FIELD reqid ON user_consents TYPE string;
 
 DEFINE FIELD expires_at ON user_consents TYPE datetime DEFAULT time::now() + 2y;
     -- Срок действия согласия (GDPR рекомендует пере-соглашение раз в 2 года).
-
+    -- change time_stamp -> created_at
 DEFINE FIELD time_stamp ON user_consents TYPE datetime DEFAULT time::now();
     -- Точное время дачи согласия.
 
@@ -78,7 +78,7 @@ DEFINE FIELD client_ip ON security_audit TYPE string;
 
 DEFINE FIELD reqid ON security_audit TYPE string;
     -- ID запроса (трассировка).
-
+    -- change time_stamp -> create_at
 DEFINE FIELD time_stamp ON security_audit TYPE datetime DEFAULT time::now();
     -- Время события.
 
