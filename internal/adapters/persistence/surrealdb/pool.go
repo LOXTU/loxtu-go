@@ -13,6 +13,8 @@ import (
 
 	driver "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+
+	mw "github.com/loxtu/loxtu-go/internal/interfaces/http/middleware"
 )
 
 // Config is injected by the composition root (main). Adapter never reads ENV.
@@ -202,7 +204,7 @@ func (p *Pool) CreateRecord(ctx context.Context, ns, dbName, table string, data 
 
 // TenantNS returns the tenant-specific namespace/db from context, or default.
 func (p *Pool) TenantNS(ctx context.Context) string {
-	if v := ctx.Value("tenant_id"); v != nil {
+	if v := ctx.Value(mw.TenantCtxKey); v != nil {
 		if code, ok := v.(string); ok && code != "" {
 			return code
 		}
