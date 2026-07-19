@@ -24,9 +24,8 @@ DEFINE FIELD expires_at ON sessions TYPE datetime;
 DEFINE INDEX idx_sessions_token_hash ON sessions FIELDS token_hash UNIQUE;
     -- Быстрый поиск сессии по хэшу refresh token.
 
-DEFINE INDEX idx_sessions_user_id ON sessions FIELDS user_id UNIQUE;
-    -- UNIQUE: одна активная сессия на пользователя (one-session policy).
-    -- Защита от race condition при double-submit (Create удаляет→создаёт).
+DEFINE INDEX idx_sessions_user_id ON sessions FIELDS user_id;
+    -- Быстрый поиск по юзеру для ревокации. NOT UNIQUE — multi-device.
 
 DEFINE INDEX idx_sessions_expires_at ON sessions FIELDS expires_at;
     -- Фоновая очистка просроченных сессий.
