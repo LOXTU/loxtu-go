@@ -118,7 +118,7 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 
 	_ = dek // used for encryption above
 
-	_, err = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err = r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE users SET
 			user_id = $user_id,
 			tenant_id = $tenant_id,
@@ -164,7 +164,7 @@ func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*iden
 	if userID == "" {
 		return nil, nil
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM users WHERE user_id = $id LIMIT 1",
 		map[string]any{"id": userID},
 	)
@@ -190,7 +190,7 @@ func (r *UserRepository) FindByEmailHash(ctx context.Context, emailHash string) 
 	if emailHash == "" {
 		return nil, nil
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM users WHERE email_hash = $hash LIMIT 1",
 		map[string]any{"hash": emailHash},
 	)
@@ -235,7 +235,7 @@ func (r *UserRepository) Update(ctx context.Context, user *identity.User) error 
 	vars["login_count"] = user.LoginCount
 	vars["failed_login_count"] = user.FailedLoginCount
 
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`UPDATE users SET
 			status = $status,
 			role = $role,
@@ -264,7 +264,7 @@ func (r *UserRepository) Erase(ctx context.Context, userID string) error {
 	if userID == "" {
 		return fmt.Errorf("user_id is required for erase")
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`UPDATE users SET
 			encrypted_dek = NONE,
 			email_hash = rand::string(32),

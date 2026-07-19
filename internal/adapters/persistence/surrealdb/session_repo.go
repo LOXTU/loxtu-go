@@ -29,7 +29,7 @@ func (r *SessionRepo) Create(ctx context.Context, session *identity.Session) err
 	if session.UserID != "" {
 		_ = r.RevokeByUserID(ctx, session.UserID)
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE sessions SET user_id = $uid, token_hash = $hash, expires_at = time::from_unix($expires), created_at = time::now()`,
 		map[string]any{
 			"uid":     session.UserID,
@@ -48,7 +48,7 @@ func (r *SessionRepo) FindByTokenHash(ctx context.Context, tokenHash string) (*i
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM sessions WHERE token_hash = $hash LIMIT 1",
 		map[string]any{"hash": tokenHash},
 	)
@@ -83,7 +83,7 @@ func (r *SessionRepo) RevokeByUserID(ctx context.Context, userID string) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"DELETE sessions WHERE user_id = $uid",
 		map[string]any{"uid": userID},
 	)
@@ -95,7 +95,7 @@ func (r *SessionRepo) RevokeByTokenHash(ctx context.Context, tokenHash string) e
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"DELETE sessions WHERE token_hash = $hash",
 		map[string]any{"hash": tokenHash},
 	)
@@ -107,7 +107,7 @@ func (r *SessionRepo) CleanupExpired(ctx context.Context) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"DELETE sessions WHERE expires_at < time::now()",
 		nil,
 	)

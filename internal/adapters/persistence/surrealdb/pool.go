@@ -200,6 +200,16 @@ func (p *Pool) CreateRecord(ctx context.Context, ns, dbName, table string, data 
 	return *result, nil
 }
 
+// TenantNS returns the tenant-specific namespace/db from context, or default.
+func (p *Pool) TenantNS(ctx context.Context) string {
+	if v := ctx.Value("tenant_code"); v != nil {
+		if code, ok := v.(string); ok && code != "" {
+			return code
+		}
+	}
+	return p.defaultNS
+}
+
 // Close drains and closes all connections.
 func (p *Pool) Close() {
 	p.mu.Lock()

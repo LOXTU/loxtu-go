@@ -29,7 +29,7 @@ func (r *CredRepo) SaveUser(ctx context.Context, userID string, handle []byte, t
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`UPSERT passkey_users SET user_id = $uid, handle = $handle, tenant_id = $tid`,
 		map[string]any{"uid": userID, "handle": handle, "tid": tenantID},
 	)
@@ -41,7 +41,7 @@ func (r *CredRepo) FindHandleByUserID(ctx context.Context, userID string) ([]byt
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT handle FROM passkey_users WHERE user_id = $uid LIMIT 1",
 		map[string]any{"uid": userID},
 	)
@@ -76,14 +76,14 @@ func (r *CredRepo) SaveCredential(ctx context.Context, cred *identity.PasskeyCre
 	aaguid := strings.ReplaceAll(cred.AAGUID, "'", "''")
 
 	// Separate DELETE and CREATE — multi-statement not supported by SDK + SurrealDB 3.2.0
-	_, _ = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, _ = r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		fmt.Sprintf("DELETE passkey_credentials WHERE user_id = '%s'", userID), nil)
 
 	query := fmt.Sprintf(
 		"CREATE passkey_credentials SET user_id = '%s', kid = '%s', public_key = '%s', sign_count = %d, transports = [], aaguid = '%s', backup_eligible = %v, backup_state = %v",
 		userID, kidB64, pkB64, cred.SignCount, aaguid, cred.BackupEligible, cred.BackupState,
 	)
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB, query, nil)
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx), query, nil)
 	return err
 }
 
@@ -92,7 +92,7 @@ func (r *CredRepo) FindCredentialsByUserID(ctx context.Context, userID string) (
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM passkey_credentials WHERE user_id = $uid",
 		map[string]any{"uid": userID},
 	)
@@ -117,7 +117,7 @@ func (r *CredRepo) FindCredentialByKID(ctx context.Context, kid []byte) (*identi
 		return nil, fmt.Errorf("db not connected")
 	}
 	kidB64 := base64.RawURLEncoding.EncodeToString(kid)
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM passkey_credentials WHERE kid = $kid LIMIT 1",
 		map[string]any{"kid": kidB64},
 	)
@@ -141,7 +141,7 @@ func (r *CredRepo) FindUserByHandle(ctx context.Context, handle []byte) (*identi
 		return nil, fmt.Errorf("db not connected")
 	}
 	// Try to find user by handle (works when CBOR bytes match)
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT user_id, tenant_id, handle FROM passkey_users WHERE handle = $handle LIMIT 1",
 		map[string]any{"handle": handle},
 	)
@@ -177,7 +177,7 @@ func (r *CredRepo) UpdateSignCount(ctx context.Context, userID string, kid []byt
 		return fmt.Errorf("db not connected")
 	}
 	kidB64 := base64.RawURLEncoding.EncodeToString(kid)
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"UPDATE passkey_credentials SET sign_count = $sc WHERE user_id = $uid AND kid = $kid",
 		map[string]any{"uid": userID, "kid": kidB64, "sc": newCount},
 	)

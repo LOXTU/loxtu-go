@@ -41,7 +41,7 @@ func (r *OAuthRepo) LinkOrCreate(ctx context.Context, account *identity.OAuthAcc
 		account.CreatedAt = time.Now()
 	}
 
-	_, err = r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err = r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE oauth_accounts SET id = $id, user_id = $uid, tenant_id = $tid, provider = $prov, provider_sub = $sub, created_at = <datetime>$ca`,
 		map[string]any{
 			"id":    account.ID,
@@ -64,7 +64,7 @@ func (r *OAuthRepo) FindByProvider(ctx context.Context, provider, providerSub st
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM oauth_accounts WHERE provider = $prov AND provider_sub = $sub LIMIT 1",
 		map[string]any{"prov": provider, "sub": providerSub},
 	)
@@ -87,7 +87,7 @@ func (r *OAuthRepo) FindByUserID(ctx context.Context, userID string) ([]*identit
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
-	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"SELECT * FROM oauth_accounts WHERE user_id = $uid",
 		map[string]any{"uid": userID},
 	)
@@ -111,7 +111,7 @@ func (r *OAuthRepo) Unlink(ctx context.Context, userID, provider string) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
-	_, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
+	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		"DELETE oauth_accounts WHERE user_id = $uid AND provider = $prov",
 		map[string]any{"uid": userID, "prov": provider},
 	)
