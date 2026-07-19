@@ -325,6 +325,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	userIDHash := ""
+	userID := ""
 	tenantID := "public"
 	if c, err := r.Cookie("loxtu_access"); err == nil {
 		token, _, _ := jwt.NewParser(jwt.WithoutClaimsValidation()).ParseUnverified(c.Value, &identity.AccessClaims{})
@@ -337,9 +338,18 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	// Resolve raw UUID from user_id_hash (session store uses raw UUID)
+	if userIDHash != "" && h.users != nil {
+		u, err := h.users.FindByUserIDHash(r.Context(), userIDHash)
+		if err == nil && u != nil && u.UserID != "" {
+			userID = u.UserID
+		}
+	}
+
 	slog.Info("logout", "user_id_hash", userIDHash, "reqid", mw.GetRequestID(r.Context()))
-	if userIDHash != "" {
-		if err := h.tokens.RevokeAllForUser(r.Context(), userIDHash); err != nil {
+	if userID != "" {
+		if err := h.tokens.RevokeAllForUser(r.Context(), userID); err != nil {
 			slog.Warn("session revocation skipped", "err", err)
 		} else {
 			h.logSecurity(r, audit.SecurityEvent{
