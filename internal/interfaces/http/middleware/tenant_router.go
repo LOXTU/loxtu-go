@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+
+	"github.com/loxtu/loxtu-go/internal/core/identity"
 )
 
-const TenantCtxKey ctxKey = "tenant_id"
-
+// GetTenantID extracts the tenant_id from context (delegates to identity package).
 func GetTenantID(ctx context.Context) string {
-	v, _ := ctx.Value(TenantCtxKey).(string)
-	return v
+	return identity.GetTenantID(ctx)
 }
 
 type preAuthState struct {
@@ -46,7 +46,7 @@ func NewTenantRouter(resolver TenantResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tenantID := resolveTenantID(r, resolver)
-			ctx := context.WithValue(r.Context(), TenantCtxKey, tenantID)
+			ctx := context.WithValue(r.Context(), identity.TenantIDKey, tenantID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
