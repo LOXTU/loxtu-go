@@ -132,6 +132,7 @@ func (r *UserRepository) Create(ctx context.Context, user *identity.User) error 
 	_, err = r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE users SET
 			user_id = $user_id,
+			user_id_hash = $user_id_hash,
 			tenant_id = $tenant_id,
 			status = $status,
 			encrypted_dek = $encrypted_dek,
