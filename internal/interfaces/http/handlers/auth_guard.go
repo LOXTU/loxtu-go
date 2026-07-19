@@ -70,6 +70,11 @@ func Guard(next http.Handler) http.Handler {
 		}
 
 		routerTenant := mw.GetTenantID(r.Context())
+		// If middleware couldn't determine tenant (no email in request, JWT cookie not yet set),
+		// trust the JWT claims over middleware's "public" fallback.
+		if routerTenant == "public" && claims.TenantID != "" {
+			routerTenant = claims.TenantID
+		}
 		if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
 			slog.Error("tenant mismatch, blocking", "jwt_tenant", claims.TenantID, "router_tenant", routerTenant)
 			http.Error(w, "forbidden", http.StatusForbidden)
