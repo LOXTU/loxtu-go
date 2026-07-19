@@ -122,7 +122,7 @@ func main() {
 		passkeyPresence,
 		secCfg.HashPepper,
 	)
-	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, auditR)
+	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, tenantRepo, auditR)
 	dashH := handlers.NewDashboardHandlerWithTenant(tenantRepo)
 
 	// ── OAuth2 ────────────────────────────────────────────────────────────

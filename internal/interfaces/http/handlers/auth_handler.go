@@ -370,7 +370,6 @@ func (h *AuthHandler) issueCookies(w http.ResponseWriter, r *http.Request, userI
 		ClientIP: mw.GetClientIP(r), ReqID: mw.GetRequestID(r.Context()),
 	})
 	setAuthCookies(w, pair)
-	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	return nil
 }
 
@@ -406,7 +405,8 @@ func clearAuthCookies(w http.ResponseWriter) {
 }
 
 func clearTempAuthCookies(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	// No temp auth cookies are set in the current flow.
+	// This function exists as a hook for future use.
 }
 
 // emailDomain extracts the domain part of an email address.

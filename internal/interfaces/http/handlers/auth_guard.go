@@ -108,7 +108,6 @@ func Guard(users identity.UserStore) func(http.Handler) http.Handler {
 			}
 			ctx = context.WithValue(ctx, ctxUserID, rawUserID)
 			ctx = context.WithValue(ctx, ctxRole, claims.Role)
-			// Email stored in cookie (loxtu_email), resolved at use site
 
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")

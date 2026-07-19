@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -21,12 +22,13 @@ import (
 type PasskeyHandler struct {
 	passkey *identity.PasskeyService
 	tokens  *identity.TokenService
+	tenants mw.TenantResolver // email domain → tenant resolution
 	audit   audit.Store
 }
 
 // NewPasskeyHandler constructs PasskeyHandler.
-func NewPasskeyHandler(pk *identity.PasskeyService, tokens *identity.TokenService, auditStore audit.Store) *PasskeyHandler {
-	return &PasskeyHandler{passkey: pk, tokens: tokens, audit: auditStore}
+func NewPasskeyHandler(pk *identity.PasskeyService, tokens *identity.TokenService, tenants mw.TenantResolver, auditStore audit.Store) *PasskeyHandler {
+	return &PasskeyHandler{passkey: pk, tokens: tokens, tenants: tenants, audit: auditStore}
 }
 
 // Mount registers passkey routes.
@@ -60,7 +62,14 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
 		return
 	}
-	tenantID := mw.ResolveTenantByEmail(r.Context(), email)
+	tenantID := ""
+	if h.tenants != nil {
+		if domain := passkeyEmailDomain(email); domain != "" {
+			if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
+				tenantID = code
+			}
+		}
+	}
 	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantID)
 	if err != nil {
 		identity.Logf("ERROR BeginRegistration: %v", err)
@@ -129,7 +138,14 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	tenantID := mw.ResolveTenantByEmail(r.Context(), email)
+	tenantID := ""
+	if h.tenants != nil {
+		if domain := passkeyEmailDomain(email); domain != "" {
+			if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
+				tenantID = code
+			}
+		}
+	}
 	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
 
 	// Find user to get userID
@@ -161,7 +177,14 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, options)
 		return
 	}
-	tenantID := mw.ResolveTenantByEmail(r.Context(), email)
+	tenantID := ""
+	if h.tenants != nil {
+		if domain := passkeyEmailDomain(email); domain != "" {
+			if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
+				tenantID = code
+			}
+		}
+	}
 	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantID)
 	if err != nil {
 		identity.Logf("BeginLogin: no credentials for %s: %v", security.MaskEmail(email), err)
@@ -215,4 +238,14 @@ type PasskeyPresenceFunc func(ctx context.Context, tenantID, email string) bool
 // HasPasskey implements PasskeyPresence.
 func (f PasskeyPresenceFunc) HasPasskey(ctx context.Context, tenantID, email string) bool {
 	return f(ctx, tenantID, email)
+}
+
+// passkeyEmailDomain extracts the domain part of an email address.
+func passkeyEmailDomain(email string) string {
+	email = strings.TrimSpace(email)
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	return strings.ToLower(parts[1])
 }
