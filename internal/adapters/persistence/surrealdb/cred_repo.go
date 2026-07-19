@@ -135,11 +135,12 @@ func (r *CredRepo) FindCredentialByKID(ctx context.Context, kid []byte) (*identi
 	return mapCredentialRow(rm), nil
 }
 
-// FindUserByHandle loads passkey_user by handle.
+// FindUserByHandle loads passkey_user by handle (simple fallback, primary path is FindCredentialByKID).
 func (r *CredRepo) FindUserByHandle(ctx context.Context, handle []byte) (*identity.PasskeyUser, error) {
 	if r.pool == nil {
 		return nil, fmt.Errorf("db not connected")
 	}
+	// Try to find user by handle (works when CBOR bytes match)
 	results, err := r.pool.Query(ctx, r.pool.defaultNS, r.pool.defaultDB,
 		"SELECT user_id, tenant_id, handle FROM passkey_users WHERE handle = $handle LIMIT 1",
 		map[string]any{"handle": handle},

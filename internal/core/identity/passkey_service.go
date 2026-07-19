@@ -287,9 +287,15 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, challenge string, pars
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
 		cred, findErr := s.creds.FindCredentialByKID(ctx, rawID)
 		if findErr == nil && cred != nil {
+			// Load user handle from passkey_users (by user_id string, not handle bytes)
+			handle, hErr := s.creds.FindHandleByUserID(ctx, cred.UserID)
+			if hErr != nil || len(handle) == 0 {
+				handle = userHandle
+			}
 			pu := &PasskeyUser{
 				UserID:   cred.UserID,
 				TenantID: cs.TenantID,
+				Handle:   handle,
 			}
 			// Load all credentials for this user
 			allCreds, _ := s.creds.FindCredentialsByUserID(ctx, cred.UserID)
