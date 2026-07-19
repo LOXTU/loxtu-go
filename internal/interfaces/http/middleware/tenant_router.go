@@ -73,7 +73,7 @@ func resolveTenantID(r *http.Request, resolver TenantResolver) string {
 		}
 	}
 
-	// Priority 3: URL query param email (GET: passkey login/register pages)
+	// Priority 3: URL query param email (GET requests, passkey login/register pages)
 	if email := r.URL.Query().Get("email"); email != "" {
 		if domain := domainFromEmail(email); domain != "" {
 			code, err := resolver.ResolveByDomain(r.Context(), domain)
@@ -83,7 +83,12 @@ func resolveTenantID(r *http.Request, resolver TenantResolver) string {
 		}
 	}
 
-	// Priority 4: public (no email means unauthenticated, e.g. health check)
+	// Priority 4: pre_auth_tenant cookie (set by skip/consent handler for redirect after auth)
+	if c, err := r.Cookie("pre_auth_tenant"); err == nil && c.Value != "" {
+		return c.Value
+	}
+
+	// Priority 5: public (no email means unauthenticated, e.g. health check)
 	return "public"
 }
 

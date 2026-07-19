@@ -142,6 +142,13 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		setAuthCookies(w, pair)
 	}
 	clearTempAuthCookies(w)
+	// Set a minimal temp cookie so middleware can resolve tenant on GET /dashboard
+	// before the JWT cookie is processed by the browser (HTMX race condition).
+	http.SetCookie(w, &http.Cookie{
+		Name: "pre_auth_tenant", Value: tenantID,
+		Path: "/", MaxAge: 60,
+		HttpOnly: false, Secure: true,
+	})
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)
 }
