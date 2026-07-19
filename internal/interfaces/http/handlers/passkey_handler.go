@@ -60,7 +60,7 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
 		return
 	}
-	tenantID := mw.GetTenantID(r.Context())
+	tenantID := mw.ResolveTenantByEmail(r.Context(), email)
 	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantID)
 	if err != nil {
 		identity.Logf("ERROR BeginRegistration: %v", err)
@@ -94,7 +94,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 
 	tenantID := user.TenantID
 	if tenantID == "" {
-		tenantID = mw.GetTenantID(r.Context())
+		tenantID = "public"
 	}
 
 	if h.audit != nil {
@@ -129,7 +129,7 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	tenantID := mw.GetTenantID(r.Context())
+	tenantID := mw.ResolveTenantByEmail(r.Context(), email)
 	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
 
 	// Find user to get userID
@@ -142,21 +142,15 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		setAuthCookies(w, pair)
 	}
 	clearTempAuthCookies(w)
-	// Set a minimal temp cookie so middleware can resolve tenant on GET /dashboard
-	// before the JWT cookie is processed by the browser (HTMX race condition).
-	http.SetCookie(w, &http.Cookie{
-		Name: "pre_auth_tenant", Value: tenantID,
-		Path: "/", MaxAge: 60,
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)
 }
 
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-	tenantID := mw.GetTenantID(r.Context())
 	if email == "" {
+		// Discoverable login — no email, tenant from existing JWT or empty
+		tenantID := mw.GetTenantID(r.Context())
 		options, challenge, err := h.passkey.BeginLoginDiscoverable(r.Context(), tenantID)
 		if err != nil {
 			identity.Logf("BeginLogin discoverable: no credentials: %v", err)
@@ -167,6 +161,7 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, options)
 		return
 	}
+	tenantID := mw.ResolveTenantByEmail(r.Context(), email)
 	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantID)
 	if err != nil {
 		identity.Logf("BeginLogin: no credentials for %s: %v", security.MaskEmail(email), err)
@@ -191,7 +186,7 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := user.TenantID
 	if tenantID == "" {
-		tenantID = mw.GetTenantID(r.Context())
+		tenantID = "public"
 	}
 	identity.Logf("Login successful for user=%s in tenant=%s", user.UserID, tenantID)
 	pair, err := h.tokens.IssueSession(r.Context(), user.UserID, tenantID, "worker", nil)

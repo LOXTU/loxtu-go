@@ -16,11 +16,13 @@ const (
 	RefreshTokenTTL = 30 * 24 * time.Hour
 )
 
-// AccessClaims carries full user identity in the access JWT payload.
+// AccessClaims carries tenant identity in the access JWT payload.
+// UserIDHash = SHA-256 of user UUID (PII protection — no raw UUID in JWT).
+// TenantID is NOT PII and is stored in plain JSON.
 type AccessClaims struct {
 	jwt.RegisteredClaims
-	UserID      string   `json:"user_id"`
-	TenantID    string   `json:"tenant_id"`
+	UserIDHash  string   `json:"user_id_hash,omitempty"` // SHA-256 of user UUID (PII-protected)
+	TenantID    string   `json:"tenant_id"`               // NOT PII — tenant code
 	Role        string   `json:"role,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 }
@@ -51,16 +53,18 @@ func signingKey() []byte {
 }
 
 // IssueAccessToken creates a short-lived HS256 JWT for the given identity.
+// UserIDHash = SHA-256(userID) for PII protection — raw UUID never leaves the server.
 func IssueAccessToken(userID, tenantID, role string, permissions []string, ttl time.Duration) (string, error) {
+	userIDHash := fmt.Sprintf("%x", sha256.Sum256([]byte(userID)))
 	now := time.Now()
 	claims := AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "loxtu",
-			Subject:   userID,
+			Subject:   userIDHash,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		UserID:      userID,
+		UserIDHash:  userIDHash,
 		TenantID:    tenantID,
 		Role:        role,
 		Permissions: permissions,

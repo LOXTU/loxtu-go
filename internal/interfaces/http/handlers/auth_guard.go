@@ -49,7 +49,8 @@ func IsPublicPath(path string) bool {
 	return path == "/"
 }
 
-// Guard validates access JWT and enforces tenant match with TenantRouter.
+// Guard validates access JWT and injects tenant_id + user_id_hash into context.
+// TenantID is set from JWT claims (signed server-side, no external resolution needed).
 func Guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -69,6 +70,7 @@ func Guard(next http.Handler) http.Handler {
 			return
 		}
 
+		// No TenantRouter middleware anymore — tenant comes exclusively from JWT.
 		routerTenant := mw.GetTenantID(r.Context())
 		if claims.TenantID != "" && routerTenant != "" && claims.TenantID != routerTenant {
 			slog.Error("tenant mismatch, blocking", "jwt_tenant", claims.TenantID, "router_tenant", routerTenant)
@@ -80,7 +82,15 @@ func Guard(next http.Handler) http.Handler {
 			lc.TenantID = claims.TenantID
 		}
 
-		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
+		// Inject tenant_id and user_id_hash into context (the only source of truth).
+		ctx := r.Context()
+		if claims.TenantID != "" {
+			ctx = context.WithValue(ctx, identity.TenantIDKey, claims.TenantID)
+		}
+		if claims.UserIDHash != "" {
+			ctx = context.WithValue(ctx, identity.UserIDHashKey, claims.UserIDHash)
+		}
+		ctx = context.WithValue(ctx, ctxUserID, claims.Subject) // user_id_hash as sub
 		ctx = context.WithValue(ctx, ctxRole, claims.Role)
 		// Email stored in cookie (loxtu_email), resolved at use site
 

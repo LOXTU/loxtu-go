@@ -196,17 +196,17 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		_ = h.rl.Reset(r.Context(), identity.RateKeyOTPFail(email))
 	}
 
-	tenantID := mw.GetTenantID(r.Context())
-	if tenantID == "" {
-		tenantID = "public"
-	}
-
 	emailHash := security.HashEmail(email, h.pepper)
 	u, err := h.users.FindByEmailHash(r.Context(), emailHash)
 	if err != nil || u == nil || u.UserID == "" {
 		slog.Error("user not found after OTP verify", "email", security.MaskEmail(email))
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
+	}
+
+	tenantID := u.TenantID
+	if tenantID == "" {
+		tenantID = "public"
 	}
 
 	// MFA check: if tenant requires MFA and user has no passkey → require enrollment
@@ -266,17 +266,17 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := mw.GetTenantID(r.Context())
-	if tenantID == "" {
-		tenantID = "public"
-	}
-
 	emailHash := security.HashEmail(email, h.pepper)
 	u, err := h.users.FindByEmailHash(r.Context(), emailHash)
 	if err != nil || u == nil {
 		slog.Error("user not found on consent accept", "email", security.MaskEmail(email))
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
+	}
+
+	tenantID := u.TenantID
+	if tenantID == "" {
+		tenantID = "public"
 	}
 
 	masked := security.MaskEmail(email)
@@ -324,26 +324,26 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	userID := ""
+	userIDHash := ""
 	tenantID := "public"
 	if c, err := r.Cookie("loxtu_access"); err == nil {
 		token, _, _ := jwt.NewParser(jwt.WithoutClaimsValidation()).ParseUnverified(c.Value, &identity.AccessClaims{})
 		if token != nil {
 			if claims, ok := token.Claims.(*identity.AccessClaims); ok {
-				userID = claims.UserID
+				userIDHash = claims.Subject
 				if claims.TenantID != "" {
 					tenantID = claims.TenantID
 				}
 			}
 		}
 	}
-	slog.Info("logout", "user_id", userID, "reqid", mw.GetRequestID(r.Context()))
-	if userID != "" {
-		if err := h.tokens.RevokeAllForUser(r.Context(), userID); err != nil {
+	slog.Info("logout", "user_id_hash", userIDHash, "reqid", mw.GetRequestID(r.Context()))
+	if userIDHash != "" {
+		if err := h.tokens.RevokeAllForUser(r.Context(), userIDHash); err != nil {
 			slog.Warn("session revocation skipped", "err", err)
 		} else {
 			h.logSecurity(r, audit.SecurityEvent{
-				UserID:   userID,
+				UserID:   userIDHash,
 				TenantID: tenantID,
 				Action:   "auth.logout", Status: "success",
 				ClientIP: mw.GetClientIP(r), ReqID: mw.GetRequestID(r.Context()),
@@ -407,7 +407,6 @@ func clearAuthCookies(w http.ResponseWriter) {
 
 func clearTempAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "pre_auth_state", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(w, &http.Cookie{Name: "pre_auth_tenant", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
 // emailDomain extracts the domain part of an email address.

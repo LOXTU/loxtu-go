@@ -156,7 +156,6 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
-	r.Use(imw.NewTenantRouter(tenantRepo))
 	r.Use(imw.RequestID)
 	r.Use(imw.SecurityHeaders)
 
