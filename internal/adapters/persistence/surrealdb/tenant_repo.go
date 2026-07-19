@@ -8,17 +8,16 @@ import (
 	"github.com/loxtu/loxtu-go/internal/core/identity"
 )
 
-// TenantRepo looks up tenant NS codes from control_plane (loxtu/loxtu.tenant)
-// by **domain** (Host or email domain string). Implements middleware.TenantResolver.
+// TenantRepo looks up tenant codes from control_plane.tenant by domain.
 type TenantRepo struct {
 	pool      *Pool
 	ControlNS string
 	ControlDB string
 }
 
-// NewTenantRepo constructs a domain-based TenantResolver.
+// NewTenantRepo constructs a domain-based TenantResolver against control_plane NS.
 func NewTenantRepo(pool *Pool) *TenantRepo {
-	return &TenantRepo{pool: pool, ControlNS: "loxtu", ControlDB: "loxtu"}
+	return &TenantRepo{pool: pool, ControlNS: "control_plane", ControlDB: "control_plane"}
 }
 
 // ResolveByDomain maps domain → tenant.tenant_id via parameterized whitelist query.
