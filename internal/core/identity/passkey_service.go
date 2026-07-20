@@ -282,10 +282,26 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, challenge strin
 	if err != nil {
 		return nil, nil, err
 	}
-	// Use session data directly — don't call GetUser (fails for new users with no credentials)
-	user, err := s.FindOrCreatePasskeyUser(ctx, cs.UserEmail, cs.TenantID)
-	if err != nil {
-		return nil, nil, err
+
+	// Build user from session UserID directly (not by email hash — masked email won't match)
+	existingHandle, _ := s.creds.FindHandleByUserID(ctx, cs.UserID)
+	var user *PasskeyUser
+	if len(existingHandle) > 0 {
+		creds, _ := s.creds.FindCredentialsByUserID(ctx, cs.UserID)
+		user = &PasskeyUser{
+			UserID:      cs.UserID,
+			TenantID:    cs.TenantID,
+			Email:       cs.UserEmail,
+			Handle:      existingHandle,
+			Credentials: webauthnCredsFromDomain(creds),
+		}
+	} else {
+		user = &PasskeyUser{
+			UserID:   cs.UserID,
+			TenantID: cs.TenantID,
+			Email:    cs.UserEmail,
+			Handle:   cs.UserHandle,
+		}
 	}
 	// Restore handle from session — must match WebAuthnID() for CreateCredential
 	user.Handle = cs.UserHandle
