@@ -5,11 +5,11 @@ import (
 )
 
 // ConsentPartial — GDPR/NIS2/SOC2 consent card for HTMX swap into #auth-container.
-templ ConsentPartial(email string) {
+templ ConsentPartial(userIDHash string) {
 	@components.CardAuth() {
 		<div class="ds-auth-header" style="text-align:center;">
 			@components.Heading1("LOXTU")
-			<p class="ds-text ds-text--secondary">Welcome, { email }</p>
+			<p class="ds-text ds-text--secondary">Welcome! Please consent to continue</p>
 		</div>
 		@components.Heading4("Consent Required")
 		@components.Text("muted", "Please review and accept the following policies to continue.")
@@ -21,7 +21,7 @@ templ ConsentPartial(email string) {
 			hx-swap="outerHTML"
 			class="ds-consent-stack"
 		>
-			<input type="hidden" name="email" value={ email }/>
+			<input type="hidden" name="user_id_hash" value={ userIDHash }/>
 			<div class="ds-consent-stack">
 				@components.Checkbox(
 					"gdpr",

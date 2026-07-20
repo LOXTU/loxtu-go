@@ -232,7 +232,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templ.Handler(authtmpl.ConsentPartial("")).ServeHTTP(w, r)
+	templ.Handler(authtmpl.ConsentPartial(userIDHash)).ServeHTTP(w, r)
 	h.logSecurity(r, audit.SecurityEvent{
 		UserID:      u.UserID,
 		TenantID:    tenantID,
@@ -245,29 +245,29 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) ConsentPage(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	if email == "" {
+	userIDHash := r.URL.Query().Get("user_id_hash")
+	if userIDHash == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	templ.Handler(authtmpl.ConsentPartial(email)).ServeHTTP(w, r)
+	templ.Handler(authtmpl.ConsentPartial(userIDHash)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
-	email := r.FormValue("email")
-	mw.SetLogEmail(r, email)
+	userIDHash := r.FormValue("user_id_hash")
 	gdpr := r.FormValue("gdpr")
 	nis2 := r.FormValue("nis2")
 	soc2 := r.FormValue("soc2")
-	if email == "" || gdpr == "" || nis2 == "" || soc2 == "" {
-		templ.Handler(authtmpl.ConsentPage(email)).ServeHTTP(w, r)
+	if userIDHash == "" || gdpr == "" || nis2 == "" || soc2 == "" {
+		slog.Warn("consent validation failed", "user_id_hash", userIDHash[:8]+"...")
+		templ.Handler(authtmpl.ConsentPartial(userIDHash)).ServeHTTP(w, r)
 		return
 	}
+	mw.SetLogEmail(r, "***") // PII — not available after OTP
 
-	emailHash := security.HashEmail(email, h.pepper)
-	u, err := h.users.FindByEmailHash(r.Context(), emailHash)
+	u, err := h.users.FindByUserIDHash(r.Context(), userIDHash)
 	if err != nil || u == nil {
-		slog.Error("user not found on consent accept", "email", security.MaskEmail(email))
+		slog.Error("user not found on consent accept", "user_id_hash", userIDHash[:8]+"...")
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
@@ -277,31 +277,22 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 		tenantID = "public"
 	}
 
-	masked := security.MaskEmail(email)
-	_ = masked // used for logging
-
-	// Log consent event (v2)
+	// Log consent event
 	if h.audit != nil {
 		_ = h.audit.LogSecurityEvent(r.Context(), audit.SecurityEvent{
-			UserID:      u.UserID,
-			TenantID:    tenantID,
-			MaskedEmail: masked,
-			Action:      "auth.consent.accept",
-			Status:      "success",
-			ClientIP:    mw.GetClientIP(r),
-			ReqID:       mw.GetRequestID(r.Context()),
+			UserID:   u.UserID,
+			TenantID: tenantID,
+			Action:   "auth.consent.accept",
+			Status:   "success",
+			ClientIP: mw.GetClientIP(r),
+			ReqID:    mw.GetRequestID(r.Context()),
 		})
 	}
 
-	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantID, email) {
-		slog.Info("passkey presence: true", "email", masked)
-		_ = h.issueCookies(w, r, u.UserID, tenantID, "auth.consent.accept")
-		w.Header().Set("HX-Redirect", "/dashboard")
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	slog.Info("passkey presence: false, showing register", "email", masked)
-	templ.Handler(authtmpl.RegisterPartial(email)).ServeHTTP(w, r)
+	// Issue session and redirect to dashboard
+	_ = h.issueCookies(w, r, u.UserID, tenantID, "auth.consent.accept")
+	w.Header().Set("HX-Redirect", "/dashboard")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
