@@ -80,6 +80,8 @@ func (r *SurrealOTPRepo) Get(ctx context.Context, userIDHash string) (codeHash s
 	}
 	if v, ok := rm["expires_at"].(string); ok {
 		expiresAt, _ = time.Parse(time.RFC3339, v)
+	} else if t, ok := rm["expires_at"].(time.Time); ok {
+		expiresAt = t
 	}
 	return codeHash, attempts, expiresAt, nil
 }

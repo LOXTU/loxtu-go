@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/big"
 	"time"
 )
@@ -97,12 +98,14 @@ func (s *OTPService) Verify(ctx context.Context, userIDHash, code string) (bool,
 
 	// Expiry check (lazy — DB may have stale records)
 	if time.Now().After(expiresAt) {
+		slog.Warn("OTP verification failed", "reason", "expired", "expires_at", expiresAt, "user_id_hash", userIDHash[:8]+"...")
 		_ = s.store.Delete(ctx, userIDHash)
 		return false, nil
 	}
 
 	// Attempt limit
 	if attempts >= maxAttempts {
+		slog.Warn("OTP verification failed", "reason", "max_attempts", "attempts", attempts, "user_id_hash", userIDHash[:8]+"...")
 		_ = s.store.Delete(ctx, userIDHash)
 		return false, nil
 	}
@@ -110,8 +113,10 @@ func (s *OTPService) Verify(ctx context.Context, userIDHash, code string) (bool,
 	// Increment attempts (track failed attempts)
 	_ = s.store.IncrementAttempts(ctx, userIDHash)
 
+	incomingHash := sha256Hex(code)
 	// Constant-time comparison would be better, but for 6-digit OTP this is acceptable
-	if storedHash != sha256Hex(code) {
+	if storedHash != incomingHash {
+		slog.Warn("OTP verification failed", "reason", "hash_mismatch", "expected_hash", storedHash, "actual_hash", incomingHash, "expires_at", expiresAt, "user_id_hash", userIDHash[:8]+"...")
 		return false, nil
 	}
 
