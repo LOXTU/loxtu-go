@@ -164,7 +164,8 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userIDHash := r.FormValue("user_id_hash")
-	code := r.FormValue("code")
+	codes := r.Form["code"]
+	code := strings.TrimSpace(strings.Join(codes, ""))
 	if userIDHash == "" || code == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
