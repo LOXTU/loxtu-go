@@ -21,8 +21,8 @@
     var regBtn = e.target.closest('.js-register-passkey');
     if (regBtn) {
       e.preventDefault();
-      var email = regBtn.getAttribute('data-email');
-      if (email) registerPasskey(email);
+      var userIDHash = regBtn.getAttribute('data-user-id-hash');
+      if (userIDHash) registerPasskey(userIDHash);
       return;
     }
     var signinBtn = e.target.closest('.js-signin-passkey');
@@ -140,7 +140,7 @@
     }
   }
 
-  async function registerPasskey(email) {
+  async function registerPasskey(userIDHash) {
     if (registrationInProgress) {
       console.warn('[passkey] Registration already in progress, ignoring.');
       return;
@@ -153,11 +153,11 @@
       conditionalAbortController = null;
     }
 
-    console.log('[passkey] Starting registration for', email);
+    console.log('[passkey] Starting registration for', userIDHash);
 
     try {
       // Step 1: get registration options
-      var body = new URLSearchParams({ email: email });
+      var body = new URLSearchParams({ user_id_hash: userIDHash });
       var resp = await fetch('/auth/passkey/begin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -189,7 +189,7 @@
 
       // Step 4: encode and send to finish
       var attestation = encodeAttestation(credential);
-      var finishResp = await fetch('/auth/passkey/finish?email=' + encodeURIComponent(email), {
+      var finishResp = await fetch('/auth/passkey/finish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(attestation),

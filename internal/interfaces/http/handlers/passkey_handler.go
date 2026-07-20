@@ -55,26 +55,24 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
-	email := r.FormValue("email")
-	mw.SetLogEmail(r, email)
-	if email == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email required"})
+	userIDHash := r.FormValue("user_id_hash")
+	if userIDHash == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "user_id_hash required"})
 		return
 	}
-	tenantID := ""
-	if h.tenantResolver != nil {
-		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), email); err == nil && id != "" {
-			tenantID = id
-		}
+	mw.SetLogEmail(r, "***") // PII — not available
+	tenantID := mw.GetTenantID(r.Context())
+	if tenantID == "" {
+		tenantID = "public"
 	}
-	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantID)
+	options, challenge, err := h.passkey.BeginRegistrationByHash(r.Context(), userIDHash, tenantID)
 	if err != nil {
 		identity.Logf("ERROR BeginRegistration: %v", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to begin"})
 		return
 	}
 	_ = challenge
-	identity.Logf("Registration options sent for %s", security.MaskEmail(email))
+	identity.Logf("Registration options sent for %s", userIDHash[:8]+"...")
 	httputil.WriteJSON(w, http.StatusOK, options)
 }
 
@@ -128,22 +126,25 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	email := r.FormValue("email")
-	mw.SetLogEmail(r, email)
-	if email == "" {
+	userIDHash := r.FormValue("user_id_hash")
+	if userIDHash == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	tenantID := ""
-	if h.tenantResolver != nil {
-		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), email); err == nil && id != "" {
-			tenantID = id
-		}
-	}
-	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
+	mw.SetLogEmail(r, "***")
+	identity.Logf("SKIP passkey for %s", userIDHash[:8]+"...")
 
 	// Find user to get userID
-	userID, _ := h.passkey.ResolveUserID(r.Context(), email)
+	userID, err := h.passkey.ResolveUserByHash(r.Context(), userIDHash)
+	if err != nil {
+		slog.Error("skip: user not found", "user_id_hash", userIDHash[:8]+"...", "err", err)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	tenantID := mw.GetTenantID(r.Context())
+	if tenantID == "" {
+		tenantID = "public"
+	}
 
 	pair, err := h.tokens.IssueSession(r.Context(), userID, tenantID, "worker", nil)
 	if err != nil {

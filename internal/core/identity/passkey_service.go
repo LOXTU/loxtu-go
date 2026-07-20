@@ -160,6 +160,52 @@ func (s *PasskeyService) FindUserByHandle(ctx context.Context, userHandle []byte
 	return user, nil
 }
 
+// BeginRegistrationByHash starts a registration ceremony using userIDHash (no plain email).
+// Resolves the user from the DB and uses MaskedEmail for WebAuthn display.
+func (s *PasskeyService) BeginRegistrationByHash(ctx context.Context, userIDHash, tenantID string) (*protocol.CredentialCreation, string, error) {
+	if s.wa == nil {
+		return nil, "", fmt.Errorf("webauthn not initialised")
+	}
+	u, err := s.users.FindByUserIDHash(ctx, userIDHash)
+	if err != nil || u == nil {
+		return nil, "", fmt.Errorf("user not found by hash")
+	}
+	email := u.MaskedEmail
+	if email == "" {
+		email = u.UserID[:8] + "..." // fallback display
+	}
+	user, err := s.FindOrCreatePasskeyUser(ctx, email, tenantID)
+	if err != nil {
+		return nil, "", err
+	}
+	options, session, err := s.wa.BeginRegistration(user)
+	if err != nil {
+		return nil, "", fmt.Errorf("begin registration: %w", err)
+	}
+	challenge := session.Challenge
+	s.storeSession(challenge, &CeremonySession{
+		Challenge:  challenge,
+		UserID:     user.UserID,
+		UserEmail:  email,
+		TenantID:   tenantID,
+		UserHandle: user.Handle,
+		WASession:  session,
+	})
+	return options, challenge, nil
+}
+
+// ResolveUserByHash resolves the raw UserID from user_id_hash.
+func (s *PasskeyService) ResolveUserByHash(ctx context.Context, userIDHash string) (string, error) {
+	u, err := s.users.FindByUserIDHash(ctx, userIDHash)
+	if err != nil {
+		return "", fmt.Errorf("lookup user by hash: %w", err)
+	}
+	if u == nil || u.UserID == "" {
+		return "", fmt.Errorf("user not found by hash")
+	}
+	return u.UserID, nil
+}
+
 // BeginRegistration starts a registration ceremony.
 func (s *PasskeyService) BeginRegistration(ctx context.Context, email, tenantID string) (*protocol.CredentialCreation, string, error) {
 	if s.wa == nil {
