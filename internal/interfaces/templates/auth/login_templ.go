@@ -189,7 +189,7 @@ func LoginFormPartial() templ.Component {
 }
 
 // OTPFormPartial — first OTP screen
-func OTPFormPartial(email string) templ.Component {
+func OTPFormPartial(email string, userIDHash string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -230,7 +230,7 @@ func OTPFormPartial(email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = OTPBody(email, "").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = OTPBody(email, userIDHash, "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -245,7 +245,7 @@ func OTPFormPartial(email string) templ.Component {
 }
 
 // OTPErrorPartial — error + resend
-func OTPErrorPartial(email string, message string) templ.Component {
+func OTPErrorPartial(email string, userIDHash string, message string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -286,7 +286,7 @@ func OTPErrorPartial(email string, message string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = OTPBody(email, "otp-box-error").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = OTPBody(email, userIDHash, "otp-box-error").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -387,7 +387,7 @@ func OTPErrorHeader(message string) templ.Component {
 	})
 }
 
-func OTPBody(email string, boxClass string) templ.Component {
+func OTPBody(email string, userIDHash string, boxClass string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -408,14 +408,14 @@ func OTPBody(email string, boxClass string) templ.Component {
 			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<form id=\"otp-form\" hx-post=\"/auth/otp/verify\" hx-target=\"#auth-container\" hx-swap=\"outerHTML\" class=\"ds-auth-form\"><input type=\"hidden\" name=\"email\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<form id=\"otp-form\" hx-post=\"/auth/otp/verify\" hx-target=\"#auth-container\" hx-swap=\"outerHTML\" class=\"ds-auth-form\"><input type=\"hidden\" name=\"user_id_hash\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var14 string
-		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(email)
+		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(userIDHash)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 101, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/interfaces/templates/auth/login.templ`, Line: 101, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {

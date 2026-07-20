@@ -97,7 +97,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			msg := "Too many attempts. Please wait before trying again."
-			templ.Handler(authtmpl.OTPErrorPartial(email, msg)).ServeHTTP(w, r)
+			templ.Handler(authtmpl.OTPErrorPartial(email, "", msg)).ServeHTTP(w, r)
 			return
 		}
 	}
@@ -155,7 +155,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		ReqID:       mw.GetRequestID(r.Context()),
 	})
 
-	templ.Handler(authtmpl.OTPFormPartial(email)).ServeHTTP(w, r)
+	templ.Handler(authtmpl.OTPFormPartial(email, userIDHash)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +178,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			msg := "Too many attempts. Please wait before trying again."
-			templ.Handler(authtmpl.OTPErrorPartial("", msg)).ServeHTTP(w, r)
+			templ.Handler(authtmpl.OTPErrorPartial("", "", msg)).ServeHTTP(w, r)
 			return
 		}
 	}
@@ -191,7 +191,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 			ClientIP:    mw.GetClientIP(r),
 			ReqID:       mw.GetRequestID(r.Context()),
 		})
-		templ.Handler(authtmpl.OTPErrorPartial("", "Invalid or expired code. Try again.")).ServeHTTP(w, r)
+		templ.Handler(authtmpl.OTPErrorPartial("", "", "Invalid or expired code. Try again.")).ServeHTTP(w, r)
 		return
 	}
 

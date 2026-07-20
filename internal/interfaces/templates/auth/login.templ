@@ -60,18 +60,18 @@ templ LoginFormPartial() {
 }
 
 // OTPFormPartial — first OTP screen
-templ OTPFormPartial(email string) {
+templ OTPFormPartial(email string, userIDHash string) {
 	@components.CardAuth() {
 		@OTPHeader(email)
-		@OTPBody(email, "")
+		@OTPBody(email, userIDHash, "")
 	}
 }
 
 // OTPErrorPartial — error + resend
-templ OTPErrorPartial(email string, message string) {
+templ OTPErrorPartial(email string, userIDHash string, message string) {
 	@components.CardAuth() {
 		@OTPErrorHeader(message)
-		@OTPBody(email, "otp-box-error")
+		@OTPBody(email, userIDHash, "otp-box-error")
 	}
 }
 
@@ -90,7 +90,7 @@ templ OTPErrorHeader(message string) {
 	</div>
 }
 
-templ OTPBody(email string, boxClass string) {
+templ OTPBody(email string, userIDHash string, boxClass string) {
 	<form
 		id="otp-form"
 		hx-post="/auth/otp/verify"
@@ -98,7 +98,7 @@ templ OTPBody(email string, boxClass string) {
 		hx-swap="outerHTML"
 		class="ds-auth-form"
 	>
-		<input type="hidden" name="email" value={ email }/>
+		<input type="hidden" name="user_id_hash" value={ userIDHash }/>
 		<div class="ds-auth-form-body">
 			<div class="otp-boxes" role="group" aria-label="One-time code">
 				for i := 0; i < 6; i++ {
