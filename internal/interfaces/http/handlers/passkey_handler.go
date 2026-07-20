@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -20,15 +19,15 @@ import (
 
 // PasskeyHandler is the thin HTTP surface for WebAuthn ceremonies.
 type PasskeyHandler struct {
-	passkey *identity.PasskeyService
-	tokens  *identity.TokenService
-	tenants mw.TenantResolver // email domain → tenant resolution
-	audit   audit.Store
+	passkey        *identity.PasskeyService
+	tokens         *identity.TokenService
+	tenantResolver *TenantResolver // email domain → tenant code
+	audit          audit.Store
 }
 
 // NewPasskeyHandler constructs PasskeyHandler.
-func NewPasskeyHandler(pk *identity.PasskeyService, tokens *identity.TokenService, tenants mw.TenantResolver, auditStore audit.Store) *PasskeyHandler {
-	return &PasskeyHandler{passkey: pk, tokens: tokens, tenants: tenants, audit: auditStore}
+func NewPasskeyHandler(pk *identity.PasskeyService, tokens *identity.TokenService, tenantResolver *TenantResolver, auditStore audit.Store) *PasskeyHandler {
+	return &PasskeyHandler{passkey: pk, tokens: tokens, tenantResolver: tenantResolver, audit: auditStore}
 }
 
 // Mount registers passkey routes.
@@ -63,11 +62,9 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	tenantID := ""
-	if h.tenants != nil {
-		if domain := passkeyEmailDomain(email); domain != "" {
-			if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
-				tenantID = code
-			}
+	if h.tenantResolver != nil {
+		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), email); err == nil && id != "" {
+			tenantID = id
 		}
 	}
 	options, challenge, err := h.passkey.BeginRegistration(r.Context(), email, tenantID)
@@ -122,7 +119,6 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 	pair, err := h.tokens.IssueSession(r.Context(), user.UserID, tenantID, "worker", nil)
 	if err == nil {
 		setAuthCookies(w, pair)
-		clearTempAuthCookies(w)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "redirect": "/dashboard"})
 }
@@ -139,11 +135,9 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tenantID := ""
-	if h.tenants != nil {
-		if domain := passkeyEmailDomain(email); domain != "" {
-			if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
-				tenantID = code
-			}
+	if h.tenantResolver != nil {
+		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), email); err == nil && id != "" {
+			tenantID = id
 		}
 	}
 	identity.Logf("SKIP passkey for %s", security.MaskEmail(email))
@@ -157,7 +151,6 @@ func (h *PasskeyHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	} else {
 		setAuthCookies(w, pair)
 	}
-	clearTempAuthCookies(w)
 	w.Header().Set("HX-Redirect", "/dashboard")
 	w.WriteHeader(http.StatusOK)
 }
@@ -178,11 +171,9 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tenantID := ""
-	if h.tenants != nil {
-		if domain := passkeyEmailDomain(email); domain != "" {
-			if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
-				tenantID = code
-			}
+	if h.tenantResolver != nil {
+		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), email); err == nil && id != "" {
+			tenantID = id
 		}
 	}
 	options, _, err := h.passkey.BeginLogin(r.Context(), email, tenantID)
@@ -238,14 +229,4 @@ type PasskeyPresenceFunc func(ctx context.Context, tenantID, email string) bool
 // HasPasskey implements PasskeyPresence.
 func (f PasskeyPresenceFunc) HasPasskey(ctx context.Context, tenantID, email string) bool {
 	return f(ctx, tenantID, email)
-}
-
-// passkeyEmailDomain extracts the domain part of an email address.
-func passkeyEmailDomain(email string) string {
-	email = strings.TrimSpace(email)
-	parts := strings.SplitN(email, "@", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return ""
-	}
-	return strings.ToLower(parts[1])
 }

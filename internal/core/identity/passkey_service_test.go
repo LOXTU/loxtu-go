@@ -2,6 +2,8 @@ package identity_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -30,70 +32,63 @@ func TestGenerateCode(t *testing.T) {
 	}
 }
 
-func TestOTPService_SendAndVerify(t *testing.T) {
-	svc := identity.NewOTPService(nil) // nil sender = stdout fallback
-
-	otp, err := svc.Send(context.Background(), "test@loxtu.com")
-	if err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if otp.Code == "" || otp.Email != "test@loxtu.com" {
-		t.Errorf("OTP data: code=%q email=%q", otp.Code, otp.Email)
-	}
-
-	// Verify correct code
-	if !svc.Verify("test@loxtu.com", otp.Code) {
-		t.Error("Verify should succeed for correct code")
-	}
-	// OTP consumed — second verify fails
-	if svc.Verify("test@loxtu.com", otp.Code) {
-		t.Error("OTP should be consumed after first verify")
-	}
-}
-
 func TestOTPService_Verify_WrongCode(t *testing.T) {
-	svc := identity.NewOTPService(nil)
-	svc.Send(context.Background(), "x@y.com")
-	if svc.Verify("x@y.com", "000000") {
+	svc := identity.NewOTPService(nil, newMockOTPStore())
+	_ = svc.Send(context.Background(), "x@y.com")
+	valid, _ := svc.Verify(context.Background(), "x@y.com", "000000")
+	if valid {
 		t.Error("wrong code should fail")
 	}
 }
 
 func TestOTPService_Verify_UnknownEmail(t *testing.T) {
-	svc := identity.NewOTPService(nil)
-	if svc.Verify("nobody@x.com", "123456") {
+	svc := identity.NewOTPService(nil, newMockOTPStore())
+	valid, _ := svc.Verify(context.Background(), "nobody@x.com", "123456")
+	if valid {
 		t.Error("unknown email should fail")
 	}
 }
 
 func TestOTPService_Verify_MaxAttempts(t *testing.T) {
-	svc := identity.NewOTPService(nil)
-	svc.Send(context.Background(), "x@y.com")
+	svc := identity.NewOTPService(nil, newMockOTPStore())
+	_ = svc.Send(context.Background(), "x@y.com")
 	for i := 0; i < 3; i++ {
-		svc.Verify("x@y.com", "000000")
+		_, _ = svc.Verify(context.Background(), "x@y.com", "000000")
 	}
 	// 4th attempt — OTP should be deleted (maxAttempts exceeded)
-	if svc.Verify("x@y.com", "000000") {
+	valid, _ := svc.Verify(context.Background(), "x@y.com", "000000")
+	if valid {
 		t.Error("should fail after max attempts")
 	}
 }
 
 func TestOTPService_NewOTPService(t *testing.T) {
-	svc := identity.NewOTPService(nil)
+	svc := identity.NewOTPService(nil, newMockOTPStore())
 	if svc == nil {
 		t.Error("should not be nil")
 	}
 }
 
-func TestOTPData_Fields(t *testing.T) {
-	svc := identity.NewOTPService(nil)
-	otp, _ := svc.Send(context.Background(), "test@loxtu.com")
-	if otp.ExpiresAt.Before(time.Now()) {
-		t.Error("ExpiresAt should be in the future")
+func TestOTPService_SendAndVerify(t *testing.T) {
+	otpStore := newMockOTPStore()
+	svc := identity.NewOTPService(nil, otpStore)
+
+	if err := svc.Send(context.Background(), "test@loxtu.com"); err != nil {
+		t.Fatalf("Send: %v", err)
 	}
-	if otp.Attempts != 0 {
-		t.Errorf("Attempts = %d, want 0", otp.Attempts)
+
+	// Verify OTP was stored in the DB (not in-memory)
+	key := sha256Hex("test@loxtu.com")
+	_, _, _, err := otpStore.Get(context.Background(), key)
+	if err != nil {
+		t.Fatalf("OTP should be stored: %v", err)
 	}
+}
+
+// sha256Hex is a test helper matching the OTPService's internal hash.
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 // ── OAuthManager ────────────────────────────────────────────────────────

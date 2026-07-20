@@ -13,13 +13,14 @@ import (
 
 // OAuthHandler is the HTTP surface for OAuth2 flows.
 type OAuthHandler struct {
-	oauth  *identity.OAuthService
-	tokens *identity.TokenService
+	oauth          *identity.OAuthService
+	tokens         *identity.TokenService
+	tenantResolver *TenantResolver
 }
 
 // NewOAuthHandler constructs an OAuthHandler.
-func NewOAuthHandler(oauth *identity.OAuthService, tokens *identity.TokenService) *OAuthHandler {
-	return &OAuthHandler{oauth: oauth, tokens: tokens}
+func NewOAuthHandler(oauth *identity.OAuthService, tokens *identity.TokenService, tenantResolver *TenantResolver) *OAuthHandler {
+	return &OAuthHandler{oauth: oauth, tokens: tokens, tenantResolver: tenantResolver}
 }
 
 // Mount registers OAuth routes.
@@ -105,11 +106,10 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve tenant from email domain
-	tenantID := mw.GetTenantID(r.Context())
-	if tenantID == "" || tenantID == "public" {
-		if domain := emailDomain(info.Email); domain != "" {
-			// Tenant resolution happens via middleware
-			tenantID = mw.GetTenantID(r.Context())
+	tenantID := ""
+	if h.tenantResolver != nil {
+		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), info.Email); err == nil && id != "" {
+			tenantID = id
 		}
 	}
 	if tenantID == "" {
@@ -123,10 +123,7 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "auth failed", http.StatusInternalServerError)
 		return
 	}
-
 	setAuthCookies(w, pair)
-	clearTempAuthCookies(w)
-
 	slog.Info("OAuth login success", "provider", provider, "user_id", userID)
 
 	// Redirect to dashboard or stored redirect

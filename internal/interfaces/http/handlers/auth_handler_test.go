@@ -3,12 +3,14 @@ package handlers_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/loxtu/loxtu-go/internal/core/audit"
@@ -196,6 +198,55 @@ func emailHash(email string) string {
 	return identity.EmailHashWithPepper(email, testPepper)
 }
 
+// mockOTPStore implements identity.OTPStore for testing.
+type mockOTPStore struct {
+	mu    sync.Mutex
+	codes map[string]*otpRecord
+}
+
+type otpRecord struct {
+	codeHash  string
+	attempts  int
+	expiresAt time.Time
+}
+
+func newMockOTPStore() *mockOTPStore {
+	return &mockOTPStore{codes: make(map[string]*otpRecord)}
+}
+
+func (m *mockOTPStore) Save(_ context.Context, userIDHash, codeHash string, expiresAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.codes[userIDHash] = &otpRecord{codeHash: codeHash, attempts: 0, expiresAt: expiresAt}
+	return nil
+}
+
+func (m *mockOTPStore) Get(_ context.Context, userIDHash string) (string, int, time.Time, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.codes[userIDHash]
+	if !ok {
+		return "", 0, time.Time{}, fmt.Errorf("not found")
+	}
+	return r.codeHash, r.attempts, r.expiresAt, nil
+}
+
+func (m *mockOTPStore) IncrementAttempts(_ context.Context, userIDHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r, ok := m.codes[userIDHash]; ok {
+		r.attempts++
+	}
+	return nil
+}
+
+func (m *mockOTPStore) Delete(_ context.Context, userIDHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.codes, userIDHash)
+	return nil
+}
+
 func setupTestHandler(t *testing.T) (*handlers.AuthHandler, *mockUserStore, *mockSessionStore) {
 	t.Helper()
 	t.Setenv("LOXTU_JWT_SECRET", "test-secret-for-unit-tests-32bytes!")
@@ -207,10 +258,11 @@ func setupTestHandler(t *testing.T) (*handlers.AuthHandler, *mockUserStore, *moc
 	sender := mockOTPSender{}
 	rl := mockRateLimiter{}
 
-	otpSvc := identity.NewOTPService(sender)
+	otpSvc := identity.NewOTPService(sender, newMockOTPStore())
 	tokenSvc := identity.NewTokenService(users, sessions)
 
-	h := handlers.NewAuthHandler(otpSvc, tokenSvc, users, tenants, auditStore, rl, nil, testPepper)
+	tenantResolver := handlers.NewTenantResolver(tenants)
+	h := handlers.NewAuthHandler(otpSvc, tokenSvc, users, tenantResolver, auditStore, rl, nil, testPepper)
 	return h, users, sessions
 }
 
@@ -426,9 +478,10 @@ func TestSendOTP_RateLimited(t *testing.T) {
 	// Rate limiter that denies everything
 	blockingRL := &blockingRateLimiter{}
 
-	otpSvc := identity.NewOTPService(sender)
+	otpSvc := identity.NewOTPService(sender, nil)
 	tokenSvc := identity.NewTokenService(users, sessions)
-	h := handlers.NewAuthHandler(otpSvc, tokenSvc, users, tenants, auditStore, blockingRL, nil, testPepper)
+	tenantResolver := handlers.NewTenantResolver(tenants)
+	h := handlers.NewAuthHandler(otpSvc, tokenSvc, users, tenantResolver, auditStore, blockingRL, nil, testPepper)
 
 	router := chi.NewRouter()
 	router.Post("/auth/otp/send", h.SendOTP)

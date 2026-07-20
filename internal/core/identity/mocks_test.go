@@ -2,6 +2,9 @@ package identity_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
 
 	"github.com/loxtu/loxtu-go/internal/core/identity"
 )
@@ -110,3 +113,52 @@ func (m *mockSessionStore) RevokeByTokenHash(_ context.Context, hash string) err
 	return nil
 }
 func (m *mockSessionStore) CleanupExpired(_ context.Context) error { return nil }
+
+// mockOTPStore implements identity.OTPStore for testing.
+type mockOTPStore struct {
+	mu    sync.Mutex
+	codes map[string]*otpRecord
+}
+
+type otpRecord struct {
+	codeHash  string
+	attempts  int
+	expiresAt time.Time
+}
+
+func newMockOTPStore() *mockOTPStore {
+	return &mockOTPStore{codes: make(map[string]*otpRecord)}
+}
+
+func (m *mockOTPStore) Save(_ context.Context, userIDHash, codeHash string, expiresAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.codes[userIDHash] = &otpRecord{codeHash: codeHash, attempts: 0, expiresAt: expiresAt}
+	return nil
+}
+
+func (m *mockOTPStore) Get(_ context.Context, userIDHash string) (string, int, time.Time, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.codes[userIDHash]
+	if !ok {
+		return "", 0, time.Time{}, fmt.Errorf("not found")
+	}
+	return r.codeHash, r.attempts, r.expiresAt, nil
+}
+
+func (m *mockOTPStore) IncrementAttempts(_ context.Context, userIDHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r, ok := m.codes[userIDHash]; ok {
+		r.attempts++
+	}
+	return nil
+}
+
+func (m *mockOTPStore) Delete(_ context.Context, userIDHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.codes, userIDHash)
+	return nil
+}

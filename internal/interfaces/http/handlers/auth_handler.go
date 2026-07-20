@@ -26,14 +26,14 @@ type PasskeyPresence interface {
 
 // AuthHandler is the HTTP surface for OTP / consent / refresh / logout.
 type AuthHandler struct {
-	otp      *identity.OTPService
-	tokens   *identity.TokenService
-	users    identity.UserStore
-	tenants  mw.TenantResolver // for email domain → tenant resolution
-	audit    audit.Store
-	rl       identity.RateLimiter
-	passkeys PasskeyPresence // optional
-	pepper   string
+	otp            *identity.OTPService
+	tokens         *identity.TokenService
+	users          identity.UserStore
+	tenantResolver *TenantResolver // email domain → tenant code
+	audit          audit.Store
+	rl             identity.RateLimiter
+	passkeys       PasskeyPresence // optional
+	pepper         string
 }
 
 // NewAuthHandler constructs an AuthHandler with required dependencies.
@@ -41,21 +41,21 @@ func NewAuthHandler(
 	otp *identity.OTPService,
 	tokens *identity.TokenService,
 	users identity.UserStore,
-	tenants mw.TenantResolver,
+	tenantResolver *TenantResolver,
 	auditStore audit.Store,
 	rl identity.RateLimiter,
 	passkeys PasskeyPresence,
 	pepper string,
 ) *AuthHandler {
 	return &AuthHandler{
-		otp:      otp,
-		tokens:   tokens,
-		users:    users,
-		tenants:  tenants,
-		audit:    auditStore,
-		rl:       rl,
-		passkeys: passkeys,
-		pepper:   pepper,
+		otp:            otp,
+		tokens:         tokens,
+		users:          users,
+		tenantResolver: tenantResolver,
+		audit:          auditStore,
+		rl:             rl,
+		passkeys:       passkeys,
+		pepper:         pepper,
 	}
 }
 
@@ -102,17 +102,17 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if _, err := h.otp.Send(r.Context(), email); err != nil {
+	if err := h.otp.Send(r.Context(), email); err != nil {
 		slog.Error("OTP send failed", "err", err)
 		templ.Handler(authtmpl.LoginFormPartial()).ServeHTTP(w, r)
 		return
 	}
 
-	// Resolve tenant from EMAIL domain (not from cookie/router)
+	// Resolve tenant from EMAIL domain
 	tenantID := "public"
-	if domain := emailDomain(email); domain != "" && h.tenants != nil {
-		if code, err := h.tenants.ResolveByDomain(r.Context(), domain); err == nil && code != "" {
-			tenantID = code
+	if h.tenantResolver != nil {
+		if id, err := h.tenantResolver.ResolveTenantByEmail(r.Context(), email); err == nil && id != "" {
+			tenantID = id
 		}
 	}
 
@@ -141,8 +141,6 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		userID = newUser.UserID
 	}
-
-	// No pre-auth cookie — tenant resolved from email domain on every request
 
 	h.logSecurity(r, audit.SecurityEvent{
 		UserID:      userID,
@@ -179,7 +177,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !h.otp.Verify(email, code) {
+	if valid, _ := h.otp.Verify(r.Context(), email, code); !valid {
 		h.logSecurity(r, audit.SecurityEvent{
 			MaskedEmail: security.MaskEmail(email),
 			Action:      "auth.otp.verify",
@@ -211,8 +209,6 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 
 	// MFA check: if tenant requires MFA and user has no passkey → require enrollment
 	if h.passkeys != nil {
-		// TODO: read tenant.SecurityPolicy.MFARequired from TenantStore
-		// For now, check if user has passkey
 		hasPasskey := h.passkeys.HasPasskey(r.Context(), tenantID, email)
 		if !hasPasskey {
 			// MFA not satisfied — will show passkey registration after consent
@@ -294,8 +290,6 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 			ReqID:       mw.GetRequestID(r.Context()),
 		})
 	}
-
-	// No extra cookies — email is in the template, tenant from email domain
 
 	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantID, email) {
 		slog.Info("passkey presence: true", "email", masked)
@@ -411,19 +405,4 @@ func setAuthCookies(w http.ResponseWriter, pair identity.TokenPair) {
 func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_access", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true})
 	http.SetCookie(w, &http.Cookie{Name: "loxtu_refresh", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true})
-	clearTempAuthCookies(w)
-}
-
-func clearTempAuthCookies(w http.ResponseWriter) {
-	// No temp auth cookies are set in the current flow.
-	// This function exists as a hook for future use.
-}
-
-// emailDomain extracts the domain part of an email address.
-func emailDomain(email string) string {
-	parts := strings.SplitN(strings.TrimSpace(email), "@", 2)
-	if len(parts) != 2 || parts[1] == "" {
-		return ""
-	}
-	return strings.ToLower(parts[1])
 }

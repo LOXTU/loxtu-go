@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 )
 
 // UserStore persists users. Implemented by adapters/persistence/surrealdb.
@@ -18,6 +19,19 @@ type UserStore interface {
 type TenantStore interface {
 	GetByTenantID(ctx context.Context, tenantID string) (*Tenant, error)
 	ResolveByDomain(ctx context.Context, domain string) (*Tenant, error)
+}
+
+// OTPStore persists one-time password codes. KV lookup by user_id_hash.
+// SurrealDB document ID: otp_codes:[user_id_hash].
+type OTPStore interface {
+	// Save creates or replaces an OTP code (UPSERT by user_id_hash).
+	Save(ctx context.Context, userIDHash, codeHash string, expiresAt time.Time) error
+	// Get retrieves the active OTP code for a user.
+	Get(ctx context.Context, userIDHash string) (codeHash string, attempts int, expiresAt time.Time, err error)
+	// IncrementAttempts increases the failed attempt counter.
+	IncrementAttempts(ctx context.Context, userIDHash string) error
+	// Delete removes the OTP record (after successful verification or expiry).
+	Delete(ctx context.Context, userIDHash string) error
 }
 
 // SessionStore manages refresh-token sessions.

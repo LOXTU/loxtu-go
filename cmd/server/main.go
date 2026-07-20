@@ -90,7 +90,8 @@ func main() {
 	})
 
 	// ── Core services ─────────────────────────────────────────────────────
-	otpService := identity.NewOTPService(mail)
+	otpRepo := surrealdb.NewSurrealOTPRepo(pool)
+	otpService := identity.NewOTPService(mail, otpRepo)
 	tokenService := identity.NewTokenService(users, sessions)
 
 	wa, err := identity.NewWebAuthn(rpID, rpOrigin)
@@ -112,17 +113,19 @@ func main() {
 	})
 
 	// ── HTTP handlers (constructor DI only) ───────────────────────────────
+	tenantResolver := handlers.NewTenantResolver(tenantRepo)
+
 	authH := handlers.NewAuthHandler(
 		otpService,
 		tokenService,
 		users,
-		tenantRepo,
+		tenantResolver,
 		auditR,
 		rateLimiter,
 		passkeyPresence,
 		secCfg.HashPepper,
 	)
-	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, tenantRepo, auditR)
+	pkH := handlers.NewPasskeyHandler(passkeyService, tokenService, tenantResolver, auditR)
 	dashH := handlers.NewDashboardHandlerWithTenant(tenantRepo)
 
 	// ── OAuth2 ────────────────────────────────────────────────────────────
@@ -150,7 +153,7 @@ func main() {
 			RedirectURI:  envOr("APPLE_REDIRECT_URI", "https://app.loxtu.com/auth/oauth/apple/callback"),
 		}))
 	}
-	oauthH := handlers.NewOAuthHandler(oauthSvc, tokenService)
+	oauthH := handlers.NewOAuthHandler(oauthSvc, tokenService, tenantResolver)
 
 	// ── Router ────────────────────────────────────────────────────────────
 	r := chi.NewRouter()

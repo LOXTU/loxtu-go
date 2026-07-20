@@ -3,58 +3,20 @@ package identity
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"math/big"
-	"sync"
+	"strings"
 	"time"
 )
 
 const (
-	otpLength    = 6
-	otpLifetime  = 3 * time.Minute
-	maxAttempts  = 3
-	cleanupEvery = 30 * time.Second
+	otpLength   = 6
+	otpLifetime = 3 * time.Minute
+	maxAttempts = 3
 )
-
-// OTPData is an in-memory one-time password record (domain TTL / attempts).
-type OTPData struct {
-	Email     string
-	Code      string
-	ExpiresAt time.Time
-	Attempts  int
-}
-
-// OTPService generates, stores and verifies OTPs; delivery via OTPSender.
-type OTPService struct {
-	sender OTPSender
-
-	mu   sync.RWMutex
-	otps map[string]*OTPData
-}
-
-// NewOTPService constructs an OTP service. sender may be nil (dev stdout fallback).
-func NewOTPService(sender OTPSender) *OTPService {
-	s := &OTPService{
-		sender: sender,
-		otps:   make(map[string]*OTPData),
-	}
-	go s.cleanupLoop()
-	return s
-}
-
-func (s *OTPService) cleanupLoop() {
-	for range time.NewTicker(cleanupEvery).C {
-		s.mu.Lock()
-		now := time.Now()
-		for k, v := range s.otps {
-			if now.After(v.ExpiresAt) {
-				delete(s.otps, k)
-			}
-		}
-		s.mu.Unlock()
-	}
-}
 
 // GenerateCode produces a cryptographically random numeric code of otpLength digits.
 func GenerateCode() (string, error) {
@@ -69,23 +31,41 @@ func GenerateCode() (string, error) {
 	return string(code), nil
 }
 
+// OTPService generates, persists and verifies OTPs via OTPStore + OTPSender.
+type OTPService struct {
+	sender OTPSender
+	store  OTPStore
+}
+
+// NewOTPService constructs an OTP service with DB-backed storage.
+// sender may be nil (dev stdout fallback).
+func NewOTPService(sender OTPSender, store OTPStore) *OTPService {
+	return &OTPService{sender: sender, store: store}
+}
+
+// otpKey returns a deterministic KV key for the OTP record: SHA-256 of email.
+func otpKey(email string) string {
+	clean := strings.ToLower(strings.TrimSpace(email))
+	sum := sha256.Sum256([]byte(clean))
+	return hex.EncodeToString(sum[:])
+}
+
 // Send creates and stores an OTP for email, then delivers via OTPSender.
-func (s *OTPService) Send(ctx context.Context, email string) (*OTPData, error) {
+func (s *OTPService) Send(ctx context.Context, email string) error {
 	code, err := GenerateCode()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	otp := &OTPData{
-		Email:     email,
-		Code:      code,
-		ExpiresAt: time.Now().Add(otpLifetime),
-		Attempts:  0,
-	}
+	key := otpKey(email)
+	codeHash := sha256Hex(code)
+	expiresAt := time.Now().Add(otpLifetime)
 
-	s.mu.Lock()
-	s.otps[email] = otp
-	s.mu.Unlock()
+	if s.store != nil {
+		if err := s.store.Save(ctx, key, codeHash, expiresAt); err != nil {
+			return fmt.Errorf("save otp: %w", err)
+		}
+	}
 
 	if s.sender != nil {
 		notif := OTPNotification{
@@ -95,42 +75,56 @@ func (s *OTPService) Send(ctx context.Context, email string) (*OTPData, error) {
 		}
 		if err := s.sender.SendOTP(ctx, notif); err != nil {
 			log.Printf("[otp] ERROR sending OTP: %v", err)
-			return nil, fmt.Errorf("send OTP: %w", err)
+			return fmt.Errorf("send OTP: %w", err)
 		}
 	} else {
 		// Dev fallback — never ship to prod without a sender.
 		fmt.Printf("[OTP] %s -> %s\n", email, code)
 	}
 
-	return otp, nil
+	return nil
 }
 
 // Verify checks the OTP code for the given email (maxAttempts, TTL).
-// On success the OTP is consumed (single-use).
-func (s *OTPService) Verify(email, code string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	otp, ok := s.otps[email]
-	if !ok {
-		return false
+// On success the OTP is consumed (single-use). Returns true if valid.
+func (s *OTPService) Verify(ctx context.Context, email, code string) (bool, error) {
+	if s.store == nil {
+		return false, fmt.Errorf("otp store not configured")
 	}
 
-	if time.Now().After(otp.ExpiresAt) {
-		delete(s.otps, email)
-		return false
+	key := otpKey(email)
+	storedHash, attempts, expiresAt, err := s.store.Get(ctx, key)
+	if err != nil {
+		return false, nil // not found → treat as invalid
 	}
 
-	otp.Attempts++
-	if otp.Attempts > maxAttempts {
-		delete(s.otps, email)
-		return false
+	// Expiry check (lazy — DB may have stale records)
+	if time.Now().After(expiresAt) {
+		_ = s.store.Delete(ctx, key)
+		return false, nil
 	}
 
-	if otp.Code != code {
-		return false
+	// Attempt limit
+	if attempts >= maxAttempts {
+		_ = s.store.Delete(ctx, key)
+		return false, nil
 	}
 
-	delete(s.otps, email)
-	return true
+	// Increment attempts (track failed attempts)
+	_ = s.store.IncrementAttempts(ctx, key)
+
+	// Constant-time comparison would be better, but for 6-digit OTP this is acceptable
+	if storedHash != sha256Hex(code) {
+		return false, nil
+	}
+
+	// Success — consume the OTP
+	_ = s.store.Delete(ctx, key)
+	return true, nil
+}
+
+// sha256Hex returns hex-encoded SHA-256 of s.
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
