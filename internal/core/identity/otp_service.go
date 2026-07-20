@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"strings"
 	"time"
 )
 
@@ -43,26 +42,25 @@ func NewOTPService(sender OTPSender, store OTPStore) *OTPService {
 	return &OTPService{sender: sender, store: store}
 }
 
-// otpKey returns a deterministic KV key for the OTP record: SHA-256 of email.
-func otpKey(email string) string {
-	clean := strings.ToLower(strings.TrimSpace(email))
-	sum := sha256.Sum256([]byte(clean))
+// sha256Hex returns hex-encoded SHA-256 of s.
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
 
-// Send creates and stores an OTP for email, then delivers via OTPSender.
-func (s *OTPService) Send(ctx context.Context, email string) error {
+// Send creates and stores an OTP keyed by userIDHash, sends the code to email.
+// userIDHash is the storage key (otp_codes:[userIDHash]) — no PII in the DB key.
+func (s *OTPService) Send(ctx context.Context, email, userIDHash string) error {
 	code, err := GenerateCode()
 	if err != nil {
 		return err
 	}
 
-	key := otpKey(email)
 	codeHash := sha256Hex(code)
 	expiresAt := time.Now().Add(otpLifetime)
 
 	if s.store != nil {
-		if err := s.store.Save(ctx, key, codeHash, expiresAt); err != nil {
+		if err := s.store.Save(ctx, userIDHash, codeHash, expiresAt); err != nil {
 			return fmt.Errorf("save otp: %w", err)
 		}
 	}
@@ -85,33 +83,32 @@ func (s *OTPService) Send(ctx context.Context, email string) error {
 	return nil
 }
 
-// Verify checks the OTP code for the given email (maxAttempts, TTL).
+// Verify checks the OTP code for the given userIDHash (key = otp_codes:[userIDHash]).
 // On success the OTP is consumed (single-use). Returns true if valid.
-func (s *OTPService) Verify(ctx context.Context, email, code string) (bool, error) {
+func (s *OTPService) Verify(ctx context.Context, userIDHash, code string) (bool, error) {
 	if s.store == nil {
 		return false, fmt.Errorf("otp store not configured")
 	}
 
-	key := otpKey(email)
-	storedHash, attempts, expiresAt, err := s.store.Get(ctx, key)
+	storedHash, attempts, expiresAt, err := s.store.Get(ctx, userIDHash)
 	if err != nil {
 		return false, nil // not found → treat as invalid
 	}
 
 	// Expiry check (lazy — DB may have stale records)
 	if time.Now().After(expiresAt) {
-		_ = s.store.Delete(ctx, key)
+		_ = s.store.Delete(ctx, userIDHash)
 		return false, nil
 	}
 
 	// Attempt limit
 	if attempts >= maxAttempts {
-		_ = s.store.Delete(ctx, key)
+		_ = s.store.Delete(ctx, userIDHash)
 		return false, nil
 	}
 
 	// Increment attempts (track failed attempts)
-	_ = s.store.IncrementAttempts(ctx, key)
+	_ = s.store.IncrementAttempts(ctx, userIDHash)
 
 	// Constant-time comparison would be better, but for 6-digit OTP this is acceptable
 	if storedHash != sha256Hex(code) {
@@ -119,12 +116,6 @@ func (s *OTPService) Verify(ctx context.Context, email, code string) (bool, erro
 	}
 
 	// Success — consume the OTP
-	_ = s.store.Delete(ctx, key)
+	_ = s.store.Delete(ctx, userIDHash)
 	return true, nil
-}
-
-// sha256Hex returns hex-encoded SHA-256 of s.
-func sha256Hex(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
 }

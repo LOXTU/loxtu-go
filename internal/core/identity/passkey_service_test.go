@@ -34,8 +34,8 @@ func TestGenerateCode(t *testing.T) {
 
 func TestOTPService_Verify_WrongCode(t *testing.T) {
 	svc := identity.NewOTPService(nil, newMockOTPStore())
-	_ = svc.Send(context.Background(), "x@y.com")
-	valid, _ := svc.Verify(context.Background(), "x@y.com", "000000")
+	_ = svc.Send(context.Background(), "x@y.com", "hash123")
+	valid, _ := svc.Verify(context.Background(), "hash123", "000000")
 	if valid {
 		t.Error("wrong code should fail")
 	}
@@ -43,20 +43,20 @@ func TestOTPService_Verify_WrongCode(t *testing.T) {
 
 func TestOTPService_Verify_UnknownEmail(t *testing.T) {
 	svc := identity.NewOTPService(nil, newMockOTPStore())
-	valid, _ := svc.Verify(context.Background(), "nobody@x.com", "123456")
+	valid, _ := svc.Verify(context.Background(), "nonexistent-hash", "123456")
 	if valid {
-		t.Error("unknown email should fail")
+		t.Error("unknown hash should fail")
 	}
 }
 
 func TestOTPService_Verify_MaxAttempts(t *testing.T) {
 	svc := identity.NewOTPService(nil, newMockOTPStore())
-	_ = svc.Send(context.Background(), "x@y.com")
+	_ = svc.Send(context.Background(), "x@y.com", "hash456")
 	for i := 0; i < 3; i++ {
-		_, _ = svc.Verify(context.Background(), "x@y.com", "000000")
+		_, _ = svc.Verify(context.Background(), "hash456", "000000")
 	}
 	// 4th attempt — OTP should be deleted (maxAttempts exceeded)
-	valid, _ := svc.Verify(context.Background(), "x@y.com", "000000")
+	valid, _ := svc.Verify(context.Background(), "hash456", "000000")
 	if valid {
 		t.Error("should fail after max attempts")
 	}
@@ -73,15 +73,14 @@ func TestOTPService_SendAndVerify(t *testing.T) {
 	otpStore := newMockOTPStore()
 	svc := identity.NewOTPService(nil, otpStore)
 
-	if err := svc.Send(context.Background(), "test@loxtu.com"); err != nil {
+	if err := svc.Send(context.Background(), "test@loxtu.com", "test-hash-123"); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 
-	// Verify OTP was stored in the DB (not in-memory)
-	key := sha256Hex("test@loxtu.com")
-	_, _, _, err := otpStore.Get(context.Background(), key)
+	// Verify OTP was stored with the correct key
+	_, _, _, err := otpStore.Get(context.Background(), "test-hash-123")
 	if err != nil {
-		t.Fatalf("OTP should be stored: %v", err)
+		t.Fatalf("OTP should be stored under userIDHash: %v", err)
 	}
 }
 
