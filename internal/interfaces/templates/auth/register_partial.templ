@@ -5,26 +5,26 @@ import (
 )
 
 // RegisterPartial — passkey setup card for HTMX swap into #auth-container.
-templ RegisterPartial(email string) {
+templ RegisterPartial(userIDHash string) {
 	@components.CardAuth() {
 		<div class="ds-auth-header">
 			@components.Heading1("Set up passkey")
 			@components.Text("secondary", "Use Face ID, Touch ID, or your device PIN for faster sign-in next time.")
 		</div>
 		<form class="ds-auth-form">
-			<input type="hidden" name="email" value={ email }/>
+			<input type="hidden" name="user_id_hash" value={ userIDHash }/>
 			<div class="ds-auth-form-body">
-				<button type="button" class="btn btn-primary btn-auth js-register-passkey" data-email={ email }>
+				<button type="button" class="btn btn-primary btn-auth js-register-passkey" data-user-id-hash={ userIDHash }>
 					Register passkey
 				</button>
 				<button
 					type="button"
 					class="btn btn-secondary js-skip-passkey"
-					data-email={ email }
+					data-user-id-hash={ userIDHash }
 					hx-post="/auth/passkey/skip"
 					hx-target="#auth-container"
 					hx-swap="outerHTML"
-					hx-vals={ `{"email":"` + email + `"}` }
+					hx-vals={ `{"user_id_hash":"` + userIDHash + `"}` }
 				>
 					Skip for now
 				</button>

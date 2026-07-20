@@ -289,10 +289,16 @@ func (h *AuthHandler) ConsentAccept(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Issue session and redirect to dashboard
-	_ = h.issueCookies(w, r, u.UserID, tenantID, "auth.consent.accept")
-	w.Header().Set("HX-Redirect", "/dashboard")
-	w.WriteHeader(http.StatusOK)
+	// Check passkey presence — redirect to dashboard or show register
+	if h.passkeys != nil && h.passkeys.HasPasskey(r.Context(), tenantID, userIDHash) {
+		slog.Info("passkey presence: true", "user_id_hash", userIDHash[:8]+"...")
+		_ = h.issueCookies(w, r, u.UserID, tenantID, "auth.consent.accept")
+		w.Header().Set("HX-Redirect", "/dashboard")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	slog.Info("passkey presence: false, showing register", "user_id_hash", userIDHash[:8]+"...")
+	templ.Handler(authtmpl.RegisterPartial(userIDHash)).ServeHTTP(w, r)
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
