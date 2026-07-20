@@ -22,13 +22,13 @@ func NewSurrealOTPRepo(pool *Pool) *SurrealOTPRepo {
 var _ identity.OTPStore = (*SurrealOTPRepo)(nil)
 
 // Save creates or replaces the OTP record for a user (UPSERT by user_id_hash).
-// Uses type::thing for parameterized record IDs (SurrealDB 3.x syntax).
+// Uses type::record for parameterized record IDs (SurrealDB 3.x syntax).
 func (r *SurrealOTPRepo) Save(ctx context.Context, userIDHash, codeHash string, expiresAt time.Time) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
 	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
-		`CREATE type::thing("otp_codes", $uid) CONTENT {
+		`CREATE type::record("otp_codes", $uid) CONTENT {
 			code_hash = $hash,
 			attempts = 0,
 			expires_at = time::from_unix($expires),
@@ -55,7 +55,7 @@ func (r *SurrealOTPRepo) Get(ctx context.Context, userIDHash string) (codeHash s
 		return "", 0, time.Time{}, fmt.Errorf("db not connected")
 	}
 	results, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
-		"SELECT * FROM type::thing(\"otp_codes\", $uid)",
+		"SELECT * FROM type::record(\"otp_codes\", $uid)",
 		map[string]any{"uid": userIDHash},
 	)
 	if err != nil {
@@ -87,7 +87,7 @@ func (r *SurrealOTPRepo) IncrementAttempts(ctx context.Context, userIDHash strin
 		return fmt.Errorf("db not connected")
 	}
 	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
-		"UPDATE type::thing(\"otp_codes\", $uid) SET attempts += 1",
+		"UPDATE type::record(\"otp_codes\", $uid) SET attempts += 1",
 		map[string]any{"uid": userIDHash},
 	)
 	if err != nil {
@@ -102,7 +102,7 @@ func (r *SurrealOTPRepo) Delete(ctx context.Context, userIDHash string) error {
 		return fmt.Errorf("db not connected")
 	}
 	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
-		"DELETE type::thing(\"otp_codes\", $uid)",
+		"DELETE type::record(\"otp_codes\", $uid)",
 		map[string]any{"uid": userIDHash},
 	)
 	if err != nil {
