@@ -162,6 +162,7 @@ func (s *PasskeyService) FindUserByHandle(ctx context.Context, userHandle []byte
 
 // BeginRegistrationByHash starts a registration ceremony using userIDHash (no plain email).
 // Resolves the user from the DB and uses MaskedEmail for WebAuthn display.
+// Bypasses FindOrCreatePasskeyUser (which needs plain email for hash lookup) — uses UserID directly.
 func (s *PasskeyService) BeginRegistrationByHash(ctx context.Context, userIDHash, tenantID string) (*protocol.CredentialCreation, string, error) {
 	if s.wa == nil {
 		return nil, "", fmt.Errorf("webauthn not initialised")
@@ -174,21 +175,62 @@ func (s *PasskeyService) BeginRegistrationByHash(ctx context.Context, userIDHash
 	if email == "" {
 		email = u.UserID[:8] + "..." // fallback display
 	}
-	user, err := s.FindOrCreatePasskeyUser(ctx, email, tenantID)
-	if err != nil {
-		return nil, "", err
+
+	// Find or create passkey user by UserID directly (not by email hash)
+	existingHandle, _ := s.creds.FindHandleByUserID(ctx, u.UserID)
+	var handle []byte
+	if len(existingHandle) > 0 {
+		handle = existingHandle
+		creds, _ := s.creds.FindCredentialsByUserID(ctx, u.UserID)
+		passkeyUser := &PasskeyUser{
+			UserID:      u.UserID,
+			TenantID:    tenantID,
+			Email:       email,
+			Handle:      handle,
+			Credentials: webauthnCredsFromDomain(creds),
+		}
+		options, session, err := s.wa.BeginRegistration(passkeyUser)
+		if err != nil {
+			return nil, "", fmt.Errorf("begin registration: %w", err)
+		}
+		challenge := session.Challenge
+		s.storeSession(challenge, &CeremonySession{
+			Challenge:  challenge,
+			UserID:     u.UserID,
+			UserEmail:  email,
+			TenantID:   tenantID,
+			UserHandle: handle,
+			WASession:  session,
+		})
+		return options, challenge, nil
 	}
-	options, session, err := s.wa.BeginRegistration(user)
+
+	// New passkey user — generate handle
+	handle, err = GenerateHandleWithTenant(tenantID)
+	if err != nil {
+		return nil, "", fmt.Errorf("generate handle: %w", err)
+	}
+	if err := s.creds.SaveUser(ctx, u.UserID, handle, tenantID); err != nil {
+		return nil, "", fmt.Errorf("save passkey user: %w", err)
+	}
+
+	passkeyUser := &PasskeyUser{
+		UserID:   u.UserID,
+		TenantID: tenantID,
+		Email:    email,
+		Handle:   handle,
+	}
+	options, session, err := s.wa.BeginRegistration(passkeyUser)
 	if err != nil {
 		return nil, "", fmt.Errorf("begin registration: %w", err)
 	}
 	challenge := session.Challenge
 	s.storeSession(challenge, &CeremonySession{
 		Challenge:  challenge,
-		UserID:     user.UserID,
+		UserID:     u.UserID,
 		UserEmail:  email,
 		TenantID:   tenantID,
-		UserHandle: user.Handle,
+		UserHandle: handle,
 		WASession:  session,
 	})
 	return options, challenge, nil
