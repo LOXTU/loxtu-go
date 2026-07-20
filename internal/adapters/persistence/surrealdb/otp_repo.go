@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loxtu/loxtu-go/internal/core/identity"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // SurrealOTPRepo implements identity.OTPStore with SurrealDB KV lookup.
@@ -78,10 +79,27 @@ func (r *SurrealOTPRepo) Get(ctx context.Context, userIDHash string) (codeHash s
 	if v, ok := rm["attempts"].(float64); ok {
 		attempts = int(v)
 	}
-	if v, ok := rm["expires_at"].(string); ok {
-		expiresAt, _ = time.Parse(time.RFC3339, v)
-	} else if t, ok := rm["expires_at"].(time.Time); ok {
-		expiresAt = t
+	if rawTime, ok := rm["expires_at"]; ok {
+		switch v := rawTime.(type) {
+		case time.Time:
+			expiresAt = v
+		case *time.Time:
+			if v != nil {
+				expiresAt = *v
+			}
+		case models.CustomDateTime:
+			expiresAt = v.Time
+		case *models.CustomDateTime:
+			if v != nil {
+				expiresAt = v.Time
+			}
+		case string:
+			expiresAt, _ = time.Parse(time.RFC3339, v)
+		default:
+			if strTime := fmt.Sprintf("%v", v); strTime != "" {
+				expiresAt, _ = time.Parse(time.RFC3339, strTime)
+			}
+		}
 	}
 	return codeHash, attempts, expiresAt, nil
 }
