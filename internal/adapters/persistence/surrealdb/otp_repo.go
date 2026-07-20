@@ -22,21 +22,24 @@ func NewSurrealOTPRepo(pool *Pool) *SurrealOTPRepo {
 var _ identity.OTPStore = (*SurrealOTPRepo)(nil)
 
 // Save creates or replaces the OTP record for a user (UPSERT by user_id_hash).
-// Uses type::record for parameterized record IDs (SurrealDB 3.x syntax).
+// Two-step: DELETE + CREATE (SurrealDB 3.x doesn't support ON DUPLICATE KEY UPDATE with CREATE).
 func (r *SurrealOTPRepo) Save(ctx context.Context, userIDHash, codeHash string, expiresAt time.Time) error {
 	if r.pool == nil {
 		return fmt.Errorf("db not connected")
 	}
+	// Delete any existing OTP first (surreal way: UPSERT not available in CREATE CONTENT)
+	_, _ = r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
+		"DELETE type::record(\"otp_codes\", $uid)",
+		map[string]any{"uid": userIDHash},
+	)
+	// Then create the new record
 	_, err := r.pool.Query(ctx, r.pool.TenantNS(ctx), r.pool.TenantNS(ctx),
 		`CREATE type::record("otp_codes", $uid) CONTENT {
 			code_hash = $hash,
 			attempts = 0,
 			expires_at = time::from_unix($expires),
 			created_at = time::now()
-		} ON DUPLICATE KEY UPDATE
-			code_hash = $hash,
-			attempts = 0,
-			expires_at = time::from_unix($expires)`,
+		}`,
 		map[string]any{
 			"uid":     userIDHash,
 			"hash":    codeHash,
