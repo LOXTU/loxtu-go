@@ -43,7 +43,7 @@ func (r *SurrealOTPRepo) Save(ctx context.Context, userIDHash, codeHash string, 
 			"uid":        userIDHash,
 			"code_hash":  codeHash,
 			"attempts":   0,
-			"expires_at": expiresAt.Unix(),
+			"expires_at": expiresAt, // time.Time — SDK marshals to SurrealDB datetime natively
 		},
 	)
 	if err != nil {
